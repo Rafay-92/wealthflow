@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
-import type { Transaction } from '../types/transaction'
+import type { CategoryRule, Transaction } from '../types/transaction'
 
 /**
  * The on-device database (IndexedDB, via the Dexie library).
@@ -21,6 +21,7 @@ export class WealthFlowDB extends Dexie {
   accounts!: EntityTable<Account, 'id'>
   imports!: EntityTable<ImportRecord, 'id'>
   mappings!: EntityTable<SavedMapping, 'signature'>
+  rules!: EntityTable<CategoryRule, 'id'>
 
   constructor(name = 'wealthflow') {
     super(name)
@@ -29,6 +30,11 @@ export class WealthFlowDB extends Dexie {
       accounts: 'id',
       imports: 'id, importedAt',
       mappings: 'signature',
+    })
+    // Stage 4: categorisation rules. Dexie upgrades existing browsers from
+    // version 1 automatically, keeping all their data.
+    this.version(2).stores({
+      rules: 'id',
     })
   }
 }

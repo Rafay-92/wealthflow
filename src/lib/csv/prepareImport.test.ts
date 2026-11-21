@@ -39,7 +39,7 @@ describe('import pipeline', () => {
 
     const kept = prepared.rows.filter((r) => isSelectedByDefault(r.status)).map((r) => r.draft)
     let n = 0
-    const transactions = toTransactions(kept, 'chk', 'imp1', () => `id${++n}`)
+    const transactions = toTransactions(kept, ['Income', 'Other', 'Other'], 'chk', 'imp1', () => `id${++n}`)
     expect(transactions).toHaveLength(3)
     expect(transactions[0]).toEqual({
       id: 'id1',

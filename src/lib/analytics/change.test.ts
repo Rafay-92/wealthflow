@@ -18,6 +18,11 @@ describe('moneyChange', () => {
     expect(moneyChange(5000, 5000, true)).toEqual({ direction: 'flat', tone: 'neutral', amount: 0 })
   })
 
+  it('treats a tiny percentage change as no change', () => {
+    // $1,000.00 -> $1,000.30 is +0.03%, which would display as "0.0%".
+    expect(moneyChange(100030, 100000, true)).toEqual({ direction: 'flat', tone: 'neutral', amount: 0 })
+  })
+
   it('has no percentage when the previous value was zero', () => {
     expect(moneyChange(5000, 0, true)).toEqual({ direction: 'up', tone: 'good', amount: null })
   })
@@ -31,6 +36,11 @@ describe('moneyChange', () => {
 describe('pointsChange', () => {
   it('measures rate changes in percentage points', () => {
     expect(pointsChange(25, 20, true)).toEqual({ direction: 'up', tone: 'good', amount: 5 })
+  })
+
+  it('treats a change that would display as "0.0" as no change', () => {
+    expect(pointsChange(54.18, 54.21, true)).toEqual({ direction: 'flat', tone: 'neutral', amount: 0 })
+    expect(pointsChange(54.1, 54.2, true)?.direction).toBe('down') // 0.1 is visible
   })
 
   it('returns null when either rate is missing', () => {

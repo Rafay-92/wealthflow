@@ -62,6 +62,12 @@ export function dateInMonth(key: MonthKey, day: number): ISODate {
   return `${key}-${pad(day)}`
 }
 
+/** Whole days between two dates, ignoring order: daysBetween('2026-11-01', '2026-11-04') -> 3 */
+export function daysBetween(a: ISODate, b: ISODate): number {
+  const ms = Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`))
+  return Math.round(ms / 86_400_000)
+}
+
 /** The `count` months ending at `endKey`, oldest first. */
 export function monthsEndingAt(endKey: MonthKey, count: number): MonthKey[] {
   return Array.from({ length: count }, (_, i) => addMonths(endKey, i - count + 1))

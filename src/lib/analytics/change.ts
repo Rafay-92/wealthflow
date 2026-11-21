@@ -19,8 +19,16 @@ function toneFor(direction: Direction, upIsGood: boolean): Tone {
   return (direction === 'up') === upIsGood ? 'good' : 'bad'
 }
 
+/**
+ * Changes are shown to one decimal place, so anything below 0.05 displays
+ * as "0.0". Calling that a decrease (red arrow, "0.0 pts") would be noise
+ * dressed up as news, so it counts as no change.
+ */
+const NEGLIGIBLE = 0.05
+
 function directionOf(diff: number): Direction {
-  return diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'
+  if (Math.abs(diff) < NEGLIGIBLE) return 'flat'
+  return diff > 0 ? 'up' : 'down'
 }
 
 /**
@@ -31,12 +39,10 @@ function directionOf(diff: number): Direction {
  */
 export function moneyChange(current: Cents, previous: Cents, upIsGood: boolean): Change {
   const diff = current - previous
-  const direction = directionOf(diff)
-  return {
-    direction,
-    tone: toneFor(direction, upIsGood),
-    amount: previous === 0 ? null : (diff / Math.abs(previous)) * 100,
-  }
+  const percent = previous === 0 ? null : (diff / Math.abs(previous)) * 100
+  // Judge the direction by the percentage shown, not by raw cents.
+  const direction = percent === null ? directionOf(diff) : directionOf(percent)
+  return { direction, tone: toneFor(direction, upIsGood), amount: direction === 'flat' ? 0 : percent }
 }
 
 /**
@@ -47,5 +53,5 @@ export function pointsChange(current: number | null, previous: number | null, up
   if (current === null || previous === null) return null
   const diff = current - previous
   const direction = directionOf(diff)
-  return { direction, tone: toneFor(direction, upIsGood), amount: diff }
+  return { direction, tone: toneFor(direction, upIsGood), amount: direction === 'flat' ? 0 : diff }
 }

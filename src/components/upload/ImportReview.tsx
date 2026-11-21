@@ -4,11 +4,15 @@ import type { PreparedImport } from '../../lib/csv/prepareImport'
 import { formatDay } from '../../lib/dates'
 import { formatCents, sumCents } from '../../lib/money'
 import type { DraftStatus } from '../../types/import'
+import type { Category } from '../../types/transaction'
+import { CategoryLabel } from '../CategoryLabel'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 
 interface ImportReviewProps {
   prepared: PreparedImport
+  /** Predicted category for each row, same order as prepared.rows. */
+  categories: readonly Category[]
   selected: ReadonlySet<number>
   onToggle: (index: number) => void
   onSelect: (indexes: number[]) => void
@@ -107,6 +111,7 @@ export function ImportReview(props: ImportReviewProps) {
                     <input type="checkbox" className="size-4 shrink-0 accent-positive" checked={selected.has(i)} onChange={() => props.onToggle(i)} />
                     <span className="w-14 shrink-0 text-ink-faint tabular">{formatDay(row.draft.date)}</span>
                     <span className="min-w-0 flex-1 truncate">{row.draft.description}</span>
+                    <CategoryLabel category={props.categories[i] ?? 'Other'} className="hidden md:flex" />
                     {row.status !== 'new' && (
                       <span title={badge.explain} className={`hidden shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium sm:inline ${badge.className}`}>
                         {badge.label}

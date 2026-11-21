@@ -17,6 +17,8 @@ import { isSelectedByDefault, prepareImport, toTransactions, type PreparedImport
 import { useFinanceStore } from '../store/financeStore'
 import type { Account } from '../types/account'
 import type { ColumnMapping, ImportRecord } from '../types/import'
+import type { Category } from '../types/transaction'
+import { previewCategories } from '../lib/categorize/categorize'
 
 /**
  * The import flow is a small state machine. `step` says which screen we're on;
@@ -27,7 +29,7 @@ import type { ColumnMapping, ImportRecord } from '../types/import'
 type Step =
   | { kind: 'select' }
   | { kind: 'map' }
-  | { kind: 'review'; prepared: PreparedImport; selected: Set<number> }
+  | { kind: 'review'; prepared: PreparedImport; categories: Category[]; selected: Set<number> }
   | { kind: 'done'; count: number; accountName: string }
 
 interface LoadedFile {
@@ -50,6 +52,7 @@ export function UploadPage() {
   const accounts = useFinanceStore((s) => s.accounts)
   const imports = useFinanceStore((s) => s.imports)
   const mappings = useFinanceStore((s) => s.mappings)
+  const rules = useFinanceStore((s) => s.rules)
   const commitImport = useFinanceStore((s) => s.commitImport)
   const removeImport = useFinanceStore((s) => s.removeImport)
   const deleteAllData = useFinanceStore((s) => s.deleteAllData)
@@ -111,10 +114,12 @@ export function UploadPage() {
 
   function goToReview() {
     if (!file || !mapping) return
-    const prepared = prepareImport(file.rows, headerRow, mapping, transactions, accountIdFor(account))
+    const accountId = accountIdFor(account)
+    const prepared = prepareImport(file.rows, headerRow, mapping, transactions, accountId)
+    const categories = previewCategories(prepared.rows.map((r) => r.draft), accountId, transactions, rules, accounts)
     const selected = new Set(prepared.rows.flatMap((r, i) => (isSelectedByDefault(r.status) ? [i] : [])))
     setError(null)
-    setStep({ kind: 'review', prepared, selected })
+    setStep({ kind: 'review', prepared, categories, selected })
   }
 
   async function runImport() {
@@ -135,8 +140,13 @@ export function UploadPage() {
           ? { ...base, balance: closing.balance, balanceAsOf: closing.asOf }
           : base
 
-      const drafts = step.prepared.rows.filter((_, i) => step.selected.has(i)).map((r) => r.draft)
-      const newTransactions = toTransactions(drafts, updatedAccount.id, importId)
+      const keep = step.prepared.rows.flatMap((_, i) => (step.selected.has(i) ? [i] : []))
+      const newTransactions = toTransactions(
+        keep.map((i) => step.prepared.rows[i]!.draft),
+        keep.map((i) => step.categories[i]!),
+        updatedAccount.id,
+        importId,
+      )
 
       await commitImport({
         account: updatedAccount,
@@ -281,6 +291,7 @@ export function UploadPage() {
       {step.kind === 'review' && (
         <ImportReview
           prepared={step.prepared}
+          categories={step.categories}
           selected={step.selected}
           onToggle={(i) => {
             const selected = new Set(step.selected)

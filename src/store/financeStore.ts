@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { SAMPLE_ACCOUNTS, SAMPLE_TRANSACTIONS } from '../data/sampleData'
 import * as repository from '../data/repository'
+import { categorizeAll } from '../lib/categorize/categorize'
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
-import type { Transaction } from '../types/transaction'
+import type { Category, CategoryRule, Transaction } from '../types/transaction'
 
 /**
  * The app's shared data, held in a Zustand store.
@@ -23,11 +24,24 @@ interface FinanceState {
   accounts: Account[]
   imports: ImportRecord[]
   mappings: SavedMapping[]
+  rules: CategoryRule[]
 
   load: () => Promise<void>
   commitImport: (input: repository.CommitImportInput) => Promise<void>
   removeImport: (importId: string) => Promise<void>
   deleteAllData: () => Promise<void>
+  /** Sets a category by hand. Automatic categorisation will never change it. */
+  setCategory: (transactionId: string, category: Category) => Promise<void>
+  /** Hands a transaction back to automatic categorisation. */
+  resetCategory: (transactionId: string) => Promise<void>
+  addRule: (keyword: string, category: Category) => Promise<void>
+  deleteRule: (ruleId: string) => Promise<void>
+}
+
+/** Re-categorises and returns only the transactions whose category changed. */
+function changedAfterCategorizing(transactions: Transaction[], rules: CategoryRule[], accounts: Account[]): Transaction[] {
+  const result = categorizeAll(transactions, rules, accounts)
+  return result.filter((tx, i) => tx !== transactions[i])
 }
 
 export const useFinanceStore = create<FinanceState>()((set, get) => ({
@@ -37,10 +51,20 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
   accounts: [],
   imports: [],
   mappings: [],
+  rules: [],
 
   load: async () => {
     try {
       const data = await repository.loadAll()
+      // Bring every transaction up to date with the current rules. This also
+      // categorises freshly imported transactions and finds transfer pairs
+      // that span two imports. Only real changes are written back.
+      const changed = changedAfterCategorizing(data.transactions, data.rules, data.accounts)
+      if (changed.length > 0) {
+        await repository.saveTransactions(changed)
+        const byId = new Map(changed.map((t) => [t.id, t]))
+        data.transactions = data.transactions.map((t) => byId.get(t.id) ?? t)
+      }
       set({ ...data, status: 'ready', error: null })
     } catch (error) {
       console.error('[WealthFlow] Failed to load data', error)
@@ -62,7 +86,40 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
     await repository.deleteAllData()
     await get().load()
   },
+
+  setCategory: async (transactionId, category) => {
+    const tx = get().transactions.find((t) => t.id === transactionId)
+    if (!tx) return
+    await repository.saveTransactions([{ ...tx, category, categorySource: 'manual', categoryNote: 'Set by you' }])
+    await get().load()
+  },
+
+  resetCategory: async (transactionId) => {
+    const tx = get().transactions.find((t) => t.id === transactionId)
+    if (!tx) return
+    // Clearing the source lets the next load() categorise it automatically again.
+    await repository.saveTransactions([{ ...tx, categorySource: undefined, categoryNote: undefined }])
+    await get().load()
+  },
+
+  addRule: async (keyword, category) => {
+    const { transactions, rules, accounts } = get()
+    const rule: CategoryRule = { id: crypto.randomUUID(), keyword: keyword.trim(), category, createdAt: new Date().toISOString() }
+    const changed = changedAfterCategorizing(transactions, [...rules, rule], accounts)
+    await repository.saveRuleChange({ add: rule, transactions: changed })
+    await get().load()
+  },
+
+  deleteRule: async (ruleId) => {
+    const { transactions, rules, accounts } = get()
+    const changed = changedAfterCategorizing(transactions, rules.filter((r) => r.id !== ruleId), accounts)
+    await repository.saveRuleChange({ removeId: ruleId, transactions: changed })
+    await get().load()
+  },
 }))
+
+/** Sample data runs through the same categoriser, so it gets explanations too. */
+const CATEGORIZED_SAMPLE = categorizeAll(SAMPLE_TRANSACTIONS, [], SAMPLE_ACCOUNTS)
 
 /**
  * The data pages should display: your imported data, or the fictional
@@ -78,7 +135,7 @@ export function useDisplayData() {
   return {
     status,
     isSample,
-    transactions: isSample ? SAMPLE_TRANSACTIONS : transactions,
+    transactions: isSample ? CATEGORIZED_SAMPLE : transactions,
     accounts: isSample ? SAMPLE_ACCOUNTS : accounts,
   }
 }

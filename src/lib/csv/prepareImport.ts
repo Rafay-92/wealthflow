@@ -44,26 +44,25 @@ export function isSelectedByDefault(status: DraftStatus): boolean {
 }
 
 /**
- * A placeholder category until Stage 4's categorisation engine exists:
- * money in -> Income, money out -> Other.
+ * Turns the drafts the user kept into Transactions ready to save.
+ *
+ * `categories` are the ones shown on the review screen (from previewCategories).
+ * They're a starting point only: categorySource is left empty, so the store
+ * categorises everything properly as soon as it reloads.
  */
-export function provisionalCategory(amount: Cents): Category {
-  return amount > 0 ? 'Income' : 'Other'
-}
-
-/** Turns the drafts the user kept into Transactions ready to save. */
 export function toTransactions(
   drafts: readonly DraftTransaction[],
+  categories: readonly Category[],
   accountId: string,
   importId: string,
   makeId: () => string = () => crypto.randomUUID(),
 ): Transaction[] {
-  return drafts.map((d) => ({
+  return drafts.map((d, i) => ({
     id: makeId(),
     date: d.date,
     description: d.description,
     amount: d.amount,
-    category: provisionalCategory(d.amount),
+    category: categories[i] ?? 'Other',
     accountId,
     importId,
   }))
