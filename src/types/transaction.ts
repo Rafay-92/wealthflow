@@ -37,4 +37,6 @@ export interface Transaction {
   category: Category
   /** Which account this came from, used to detect transfers between accounts. */
   accountId?: string
+  /** The import batch it arrived in, so a whole import can be undone. */
+  importId?: string
 }

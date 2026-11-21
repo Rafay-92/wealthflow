@@ -16,7 +16,7 @@ import type { Period } from '../lib/analytics/periods'
 import { formatDay, formatMonth } from '../lib/dates'
 import { formatCents, formatPercent } from '../lib/money'
 import { availableMonths } from '../lib/transactions'
-import { useFinanceStore } from '../store/financeStore'
+import { useDisplayData, useFinanceStore } from '../store/financeStore'
 
 function formatPeriod({ start, end }: Period): string {
   // "Oct 1–20" when in one month, which is always the case on the dashboard.
@@ -24,9 +24,8 @@ function formatPeriod({ start, end }: Period): string {
 }
 
 export function DashboardPage() {
-  const transactions = useFinanceStore((s) => s.transactions)
-  const accounts = useFinanceStore((s) => s.accounts)
-  const dataSource = useFinanceStore((s) => s.dataSource)
+  const { status, isSample, transactions, accounts } = useDisplayData()
+  const loadError = useFinanceStore((s) => s.error)
 
   // The selected month lives in the URL (?month=2026-10), so it survives a
   // refresh and the browser's back button works.
@@ -41,6 +40,15 @@ export function DashboardPage() {
     [transactions, accounts, month],
   )
 
+  if (status === 'loading') return null // IndexedDB loads in a few milliseconds
+  if (status === 'error') {
+    return (
+      <>
+        <PageHeader title="Dashboard" />
+        <Card className="border-negative/40 text-sm text-negative">{loadError}</Card>
+      </>
+    )
+  }
   if (!month || !data) return <EmptyDashboard />
 
   const { comparison, current, previous } = data
@@ -66,7 +74,7 @@ export function DashboardPage() {
         }
       />
 
-      {dataSource === 'sample' && <SampleDataNotice />}
+      {isSample && <SampleDataNotice />}
 
       <div className="flex flex-col gap-6">
         <BalanceCard balance={data.balance} accounts={accounts} />
@@ -111,7 +119,7 @@ export function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <Section title="Income vs expenses" subtitle="Last 6 months" className="lg:col-span-3">
+          <Section title="Income vs expenses" subtitle={data.trend.length === 1 ? 'This month' : `Last ${data.trend.length} months`} className="lg:col-span-3">
             <IncomeExpenseChart
               data={data.trend}
               partialThrough={comparison.isPartial ? formatDay(comparison.current.end) : undefined}

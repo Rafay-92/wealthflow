@@ -5,10 +5,12 @@ import { NAV_ITEMS } from './components/layout/navigation'
 import { DashboardPage } from './pages/DashboardPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { UploadPage } from './pages/UploadPage'
 
 /** Pages that have been built. Any route not listed here shows its placeholder. */
 const PAGES: Record<string, ReactNode> = {
   '/': <DashboardPage />,
+  '/upload': <UploadPage />,
 }
 
 /**

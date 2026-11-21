@@ -67,8 +67,14 @@ describe('buildDashboard', () => {
     expect(buildDashboard(transactions, [], '2026-10').previous).toBeNull()
   })
 
-  it('builds a six-month trend ending at the selected month', () => {
+  it('starts the trend at the first month with data', () => {
     const data = buildDashboard(transactions, [], '2026-11')
+    expect(data.trend.map((m) => m.month)).toEqual(['2026-10', '2026-11'])
+  })
+
+  it('shows at most six months', () => {
+    const longHistory = [...transactions, tx({ date: '2025-01-15', amount: 100, category: 'Income' })]
+    const data = buildDashboard(longHistory, [], '2026-11')
     expect(data.trend.map((m) => m.month)).toEqual([
       '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11',
     ])

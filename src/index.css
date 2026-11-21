@@ -28,6 +28,8 @@
   --color-positive-soft: #3ddc9724;
   --color-negative: #f87171; /* overspending, debt */
   --color-negative-soft: #f8717124;
+  --color-warning: #f5c451; /* needs checking, e.g. ambiguous dates */
+  --color-warning-soft: #fab2191a;
 
   /*
    * Chart series. Validated with the dataviz palette checker against the
