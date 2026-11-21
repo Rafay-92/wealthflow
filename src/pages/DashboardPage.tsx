@@ -1,5 +1,5 @@
 import { ArrowRight, Upload } from 'lucide-react'
-import { useMemo, type ReactNode } from 'react'
+import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { IncomeExpenseChart } from '../components/charts/IncomeExpenseChart'
 import { BalanceCard } from '../components/dashboard/BalanceCard'
@@ -10,6 +10,7 @@ import { StatCard } from '../components/dashboard/StatCard'
 import { Card } from '../components/ui/Card'
 import { PageHeader } from '../components/ui/PageHeader'
 import { SampleDataNotice } from '../components/ui/SampleDataNotice'
+import { Section } from '../components/ui/Section'
 import { moneyChange, pointsChange } from '../lib/analytics/change'
 import { buildDashboard } from '../lib/analytics/dashboard'
 import type { Period } from '../lib/analytics/periods'
@@ -17,6 +18,8 @@ import { formatDay, formatMonth } from '../lib/dates'
 import { formatCents, formatPercent } from '../lib/money'
 import { availableMonths } from '../lib/transactions'
 import { useDisplayData, useFinanceStore } from '../store/financeStore'
+
+const SECTION_DELAY = { animationDelay: '300ms' }
 
 function formatPeriod({ start, end }: Period): string {
   // "Oct 1–20" when in one month, which is always the case on the dashboard.
@@ -119,19 +122,30 @@ export function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <Section title="Income vs expenses" subtitle={data.trend.length === 1 ? 'This month' : `Last ${data.trend.length} months`} className="lg:col-span-3">
+          <Section style={SECTION_DELAY} title="Income vs expenses" subtitle={data.trend.length === 1 ? 'This month' : `Last ${data.trend.length} months`} className="lg:col-span-3">
             <IncomeExpenseChart
               data={data.trend}
               partialThrough={comparison.isPartial ? formatDay(comparison.current.end) : undefined}
             />
           </Section>
-          <Section title="Spending breakdown" subtitle="By category, this period" className="lg:col-span-2">
+          <Section
+            title="Spending breakdown"
+            subtitle="By category, this period"
+            className="lg:col-span-2"
+            style={SECTION_DELAY}
+            action={
+              <Link to="/analytics" className="inline-flex items-center gap-1 text-sm font-medium text-ink-muted transition-colors hover:text-positive">
+                Details <ArrowRight aria-hidden className="size-4" />
+              </Link>
+            }
+          >
             <SpendingBreakdown categories={data.categories} />
           </Section>
         </div>
 
         <Section
           title="Recent transactions"
+          style={SECTION_DELAY}
           subtitle={`Latest in ${formatMonth(month)}`}
           action={
             <Link
@@ -146,29 +160,6 @@ export function DashboardPage() {
         </Section>
       </div>
     </>
-  )
-}
-
-interface SectionProps {
-  title: string
-  subtitle?: string
-  action?: ReactNode
-  className?: string
-  children: ReactNode
-}
-
-function Section({ title, subtitle, action, className = '', children }: SectionProps) {
-  return (
-    <Card className={`motion-safe:animate-rise ${className}`} style={{ animationDelay: '300ms' }}>
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="font-semibold">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-xs text-ink-faint">{subtitle}</p>}
-        </div>
-        {action}
-      </div>
-      {children}
-    </Card>
   )
 }
 

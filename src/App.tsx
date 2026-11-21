@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { AppShell } from './components/layout/AppShell'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { NAV_ITEMS } from './components/layout/navigation'
 import { DashboardPage } from './pages/DashboardPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -13,6 +14,7 @@ const PAGES: Record<string, ReactNode> = {
   '/': <DashboardPage />,
   '/upload': <UploadPage />,
   '/transactions': <TransactionsPage />,
+  '/analytics': <AnalyticsPage />,
 }
 
 /**

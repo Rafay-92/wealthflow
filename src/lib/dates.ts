@@ -68,6 +68,13 @@ export function daysBetween(a: ISODate, b: ISODate): number {
   return Math.round(ms / 86_400_000)
 }
 
+/** Number of months from `from` to `to`, counting both: monthsBetween('2026-10', '2026-12') -> 3 */
+export function monthsBetween(from: MonthKey, to: MonthKey): number {
+  const a = parseMonthKey(from)
+  const b = parseMonthKey(to)
+  return (b.year - a.year) * 12 + (b.month - a.month) + 1
+}
+
 /** The `count` months ending at `endKey`, oldest first. */
 export function monthsEndingAt(endKey: MonthKey, count: number): MonthKey[] {
   return Array.from({ length: count }, (_, i) => addMonths(endKey, i - count + 1))
