@@ -28,6 +28,11 @@ export interface ColumnMapping {
   dateFormat: DateFormat
   /** Some exports (often credit cards) show purchases as positive. This flips every sign. */
   invertAmounts: boolean
+  /**
+   * French-Canadian number format ("1 234,56"). Optional because mappings saved
+   * before CAD support don't have it; missing means false.
+   */
+  decimalComma?: boolean
 }
 
 /** A CSV row successfully turned into transaction data, before it's saved. */

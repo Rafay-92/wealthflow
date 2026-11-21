@@ -74,7 +74,7 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
   text(`${formatMonth(report.month)}${report.comparison.isPartial ? ` · month to date (${report.periodLabel})` : ''}`, PAGE_MARGIN + 14, 66)
   doc.setFontSize(9)
   text('WealthFlow', width - PAGE_MARGIN, 44, { align: 'right' })
-  text(`Generated ${options.generatedAt.toLocaleDateString('en-US', { dateStyle: 'medium' })}`, width - PAGE_MARGIN, 58, { align: 'right' })
+  text(`Generated ${options.generatedAt.toLocaleDateString('en-CA', { dateStyle: 'medium' })}`, width - PAGE_MARGIN, 58, { align: 'right' })
   if (options.isSample) {
     doc.setTextColor(250, 178, 25)
     text('Fictional sample data', width - PAGE_MARGIN, 72, { align: 'right' })
@@ -259,7 +259,7 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
     doc.line(PAGE_MARGIN, height - 40, width - PAGE_MARGIN, height - 40)
     doc.setFont('helvetica', 'normal').setFontSize(7.5)
     setColor(FAINT)
-    text('Generated on this device by WealthFlow. Totals exclude transfers between your own accounts.', PAGE_MARGIN, height - 26)
+    text('Generated on this device by WealthFlow. Amounts in Canadian dollars (CAD). Transfers between your own accounts are excluded.', PAGE_MARGIN, height - 26)
     text(`Page ${page} of ${pages}`, width - PAGE_MARGIN, height - 26, { align: 'right' })
   }
 

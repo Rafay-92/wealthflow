@@ -43,9 +43,9 @@ describe('detectRecurring', () => {
   it('finds the bills and subscriptions in the sample data', () => {
     const names = detectRecurring(SAMPLE_TRANSACTIONS, '2026-10').map((r) => r.name)
     expect(names).toEqual(
-      expect.arrayContaining(['MAPLE COURT APARTMENTS RENT', 'NETFLIX.COM', 'SPOTIFY USA', 'PLANET FITNESS', 'FIBERNET INTERNET', 'T-MOBILE']),
+      expect.arrayContaining(['MAPLE COURT APARTMENTS RENT', 'NETFLIX.COM', 'SPOTIFY', 'GOODLIFE FITNESS', 'ROGERS INTERNET', 'FIDO MOBILE']),
     )
-    expect(names).not.toContain('WHOLE FOODS MARKET')
+    expect(names).not.toContain('LOBLAWS')
     expect(names).not.toContain('STARBUCKS')
   })
 })

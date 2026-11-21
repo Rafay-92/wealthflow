@@ -1,11 +1,11 @@
-import { Database, Download, Lock, ShieldCheck, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { AlertCircle, Database, Download, Lock, ShieldCheck, Trash2, Upload } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../components/ui/Button'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Section } from '../components/ui/Section'
-import { backupFileName, createBackup, summarizeData } from '../lib/backup'
+import { backupData, backupFileName, createBackup, MAX_BACKUP_BYTES, parseBackup, summarizeData, type Backup } from '../lib/backup'
 import { useFinanceStore } from '../store/financeStore'
 
 const PRIVACY_FACTS = [
@@ -13,6 +13,7 @@ const PRIVACY_FACTS = [
   'Everything is stored in this browser’s private storage (IndexedDB) on this device only.',
   'WealthFlow never asks for, or stores, bank logins or passwords.',
   'No AI service, analytics or tracking is used. Insights are calculated on this device.',
+  'All amounts are in Canadian dollars (CAD).',
   'The production build includes a Content Security Policy that blocks connections to any other server.',
 ]
 
@@ -23,6 +24,9 @@ export function SettingsPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+  const [pendingRestore, setPendingRestore] = useState<Backup | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const data = {
     transactions: state.transactions,
@@ -47,6 +51,31 @@ export function SettingsPage() {
     // Free the memory once the browser has started the download.
     setTimeout(() => URL.revokeObjectURL(url), 1000)
     setNotice('Backup downloaded. It contains your financial data in plain text, so keep it somewhere safe.')
+  }
+
+  /** Reads and checks the chosen file. Nothing changes until the user confirms. */
+  async function chooseBackup(file: File) {
+    setRestoreError(null)
+    setNotice(null)
+    if (file.size > MAX_BACKUP_BYTES) return setRestoreError('This file is too large to be a WealthFlow backup.')
+    const result = parseBackup(await file.text())
+    if (typeof result === 'string') return setRestoreError(result)
+    setPendingRestore(result)
+  }
+
+  async function confirmRestore() {
+    if (!pendingRestore) return
+    setBusy(true)
+    try {
+      await state.restoreBackup(backupData(pendingRestore))
+      setNotice(`Restored ${pendingRestore.transactions.length.toLocaleString()} transactions from the backup.`)
+    } catch (error) {
+      console.error('[WealthFlow] Restore failed', error)
+      setRestoreError('Restoring failed, and your existing data was left unchanged.')
+    } finally {
+      setBusy(false)
+      setPendingRestore(null)
+    }
   }
 
   async function deleteEverything() {
@@ -116,10 +145,32 @@ export function SettingsPage() {
               anyone who opens it can read your transactions.
             </p>
           </div>
-          <Button className="mt-4" onClick={downloadBackup} disabled={counts.isEmpty}>
-            <Download aria-hidden className="size-4" /> Download backup
-          </Button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button onClick={downloadBackup} disabled={counts.isEmpty}>
+              <Download aria-hidden className="size-4" /> Download backup
+            </Button>
+            <Button variant="ghost" onClick={() => fileInput.current?.click()} disabled={busy}>
+              <Upload aria-hidden className="size-4" /> Restore from backup
+            </Button>
+          </div>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            aria-label="Backup file"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) void chooseBackup(file)
+              e.target.value = ''
+            }}
+          />
           {counts.isEmpty && <p className="mt-2 text-xs text-ink-faint">Nothing to back up yet.</p>}
+          {restoreError && (
+            <p role="alert" className="mt-3 flex items-start gap-2 text-sm text-negative">
+              <AlertCircle aria-hidden className="mt-0.5 size-4 shrink-0" /> {restoreError}
+            </p>
+          )}
         </Section>
 
         <Section title="Delete all data" subtitle="Permanent, and only affects this device" className="border-negative/30">
@@ -132,6 +183,20 @@ export function SettingsPage() {
           </Button>
         </Section>
       </div>
+
+      <ConfirmDialog
+        open={pendingRestore !== null}
+        title="Restore this backup?"
+        confirmLabel="Replace my data"
+        danger
+        busy={busy}
+        onCancel={() => setPendingRestore(null)}
+        onConfirm={confirmRestore}
+      >
+        The backup from {pendingRestore && new Date(pendingRestore.exportedAt).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}{' '}
+        has {pendingRestore?.transactions.length.toLocaleString()} transactions. It will <strong className="text-ink">replace</strong> everything
+        currently stored ({counts.transactions.toLocaleString()} transactions). Download a backup of your current data first if you might want it.
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmDelete}

@@ -101,9 +101,9 @@ function toUTCDate(date: ISODate): Date {
   return new Date(`${date}T00:00:00Z`)
 }
 
-const monthLong = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-const monthShort = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' })
-const dayShort = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+const monthLong = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+const monthShort = new Intl.DateTimeFormat('en-CA', { month: 'short', timeZone: 'UTC' })
+const dayShort = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 
 /** '2026-11' -> 'November 2026' (long) or 'Nov' (short) */
 export function formatMonth(key: MonthKey, style: 'long' | 'short' = 'long'): string {

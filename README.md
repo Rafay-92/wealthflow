@@ -1,6 +1,6 @@
 # WealthFlow
 
-A personal finance analytics app. Import CSV bank statements and see where your money goes: spending by category, trends, monthly reports, subscriptions, net worth and plain-English insights.
+A personal finance analytics app for Canada. Import CSV bank statements and see where your money goes: spending by category, trends, monthly reports, subscriptions, net worth and plain-English insights. **All amounts are in Canadian dollars (CAD).**
 
 **Everything runs in your browser.** Statements are read on your device, data is stored only in this browser (IndexedDB), and the production build's Content Security Policy blocks connections to any other server.
 
@@ -11,14 +11,14 @@ A personal finance analytics app. Import CSV bank statements and see where your 
 | Page | What it does |
 | --- | --- |
 | **Dashboard** | Total balance, monthly income/expenses/savings/savings rate vs last month, insights, trends, spending breakdown, recent transactions |
-| **Import** | CSV upload with drag and drop, header detection, column mapping with live preview, date-format ambiguity warnings, duplicate detection, review before saving, undo per import |
+| **Import** | CSV upload with drag and drop, header detection, column mapping with live preview, English and French (Quebec) exports including `1 234,56 $` amounts, date-format ambiguity warnings, duplicate detection, review before saving, undo per import |
 | **Transactions** | Search and filter, change categories, create merchant rules, "needs review" queue |
 | **Analytics** | 3M/6M/12M/All ranges, spending by category with per-category trends, income vs expenses, savings rate, month-over-month comparison, largest purchases, average daily spending |
 | **Insights** | Rule-based findings, each with "how this was calculated" |
 | **Reports** | Monthly report with observations, exportable as a text-based PDF |
 | **Subscriptions** | Detected monthly payments with monthly and yearly cost; confirm or dismiss each |
-| **Wealth** | Manually tracked assets and liabilities, net worth over time |
-| **Settings** | Data overview, JSON backup, delete all data, privacy facts |
+| **Wealth** | Manually tracked assets (incl. TFSA, RRSP, FHSA, RESP) and liabilities (incl. lines of credit), net worth over time |
+| **Settings** | Data overview, JSON backup and validated restore, delete all data, privacy facts |
 
 Until you import a statement, every page shows **fictional sample data**. Sample data is never saved and never mixed with your own.
 
@@ -28,13 +28,14 @@ Until you import a statement, every page shows **fictional sample data**. Sample
 | --- | --- |
 | `npm install` | Install dependencies |
 | `npm run dev` | Dev server at http://localhost:5173 |
-| `npm test` | Run the unit tests once (283 tests) |
+| `npm test` | Run the unit tests once (329 tests) |
 | `npm run test:watch` | Re-run tests on every save |
+| `npm run test:e2e` | Build, then run the browser tests in Microsoft Edge (14 tests) |
 | `npm run build` | Type-check and build for production (into `dist/`) |
 | `npm run preview` | Serve the production build at http://localhost:4173 (restart it after each build) |
 | `npm run lint` | Check for common mistakes |
 
-The Import page links to fictional sample CSVs in [`public/sample-data/`](public/sample-data/) in four formats, including a deliberately messy one.
+The Import page links to fictional sample CSVs in [`public/sample-data/`](public/sample-data/) in five formats: chequing, an overlapping chequing export, a credit card, a French-language Quebec-style export, and a deliberately messy file.
 
 ## Architecture
 
@@ -61,8 +62,8 @@ Data flows one way: **lib → store → pages → components**. Pages only displ
 
 ### Key decisions
 
-- **Integer cents.** `0.1 + 0.2 !== 0.3` in JavaScript, so all money is stored as integers. `parseAmountToCents` parses text directly and rejects ambiguous input such as `12,34`.
-- **Transfers are not spending.** Money moving between your own accounts is detected (matching pairs across accounts, plus wording) and excluded from income and spending. Payments to other people (Zelle, Venmo…) are never treated as transfers.
+- **Integer cents, in CAD.** `0.1 + 0.2 !== 0.3` in JavaScript, so all money is stored as integers. `parseAmountToCents` parses text directly, reads `CA$`/`C$`/`CAD` markers, and rejects ambiguous input such as `12,34` unless the file is set to the French number format (auto-detected).
+- **Transfers are not spending.** Money moving between your own accounts is detected (matching pairs across accounts, plus wording from Canadian banks such as `TFR-TO`, `WWW TRF`, `MB-TRANSFER`, `VIREMENT`) and excluded from income and spending. Interac e-Transfers and other payments to people are never treated as transfers.
 - **Fair comparisons.** A partial month is compared with the same days of the previous month (Nov 1–20 vs Oct 1–20).
 - **Categorization priority:** your manual choice → your rules → transfer pairs → transfer wording → built-in merchant keywords (longest match wins) → fallback marked "needs review".
 - **Schema migrations.** The database is at version 4. Each stage added a version rather than editing an old one, and a test upgrades a version-1 database without losing data.
@@ -71,16 +72,15 @@ Data flows one way: **lib → store → pages → components**. Pages only displ
 ## Testing
 
 - **Unit tests** (Vitest): `npm test`. These cover money parsing, dates, CSV parsing (including the real sample files), duplicates, categorization, analytics, recurring detection, reports and PDF content, insights, net worth, backups and database migrations.
-- **Browser checks** were run during development with headless Microsoft Edge: every page in sample and real-data mode, import flows, PDF export, backup, delete-all, mobile width (390px), keyboard access, and zero Content Security Policy violations. Those scripts aren't part of the repository yet; adding Playwright would make them repeatable in CI.
+- **Browser tests** (Playwright, in [`e2e/`](e2e/)): `npm run test:e2e`. These build the app, start a fresh production server, and use your installed Microsoft Edge, so no browser download is needed. They cover every page, English and French imports with duplicates, transfers and totals, rules, PDF export, wealth, backup and restore, phone widths and keyboard access. **Any console error, crash or Content Security Policy violation fails the test automatically.**
 
 ## Known limitations
 
-- **CSV only.** PDF statements aren't supported. Dates and amounts assume US conventions; ambiguous dates (MM/DD vs DD/MM) are flagged for you to choose.
-- **USD only.**
+- **CSV only.** PDF statements aren't supported. Ambiguous dates (MM/DD vs DD/MM, common in Canadian exports) default to MM/DD and are flagged for you to check.
+- **CAD only.** No multi-currency accounts or conversion.
 - **Subscriptions** must recur monthly. Weekly and yearly charges aren't detected.
 - **Wealth values are entered by hand.** There are no investment price feeds.
-- **Backup is export-only.** Restoring from a backup file isn't built yet.
-- **One browser, one device.** Clearing site data deletes everything, and there's no sync.
+- **One browser, one device.** Clearing site data deletes everything (keep a backup), and there's no sync.
 - **Heuristics can be wrong.** Categories, transfers and recurring payments are detected by rules. Everything can be corrected by hand, and the "needs review" filter shows what nothing matched.
 
 ## Before using real financial data
@@ -90,5 +90,5 @@ The prototype keeps data local, but more is needed before real statements should
 1. **Data at rest is not encrypted.** Anyone with access to this browser profile can read it. Consider encrypting IndexedDB contents with a user passphrase (Web Crypto).
 2. **Deliver the CSP as an HTTP header** (it's currently a `<meta>` tag), and add `frame-ancestors 'none'`, HTTPS-only hosting and HSTS.
 3. **Supply chain:** keep `npm audit` clean, pin dependency versions, and review updates.
-4. **A security review** of the import path (untrusted CSV input), the PDF generation and the backup file handling.
+4. **A security review** of the import path (untrusted CSV input), the PDF generation and the backup file handling. Backups are already validated before restoring, and restoring is all-or-nothing.
 5. **Backups contain plain-text financial data.** Users need clear guidance, or the backups should be encrypted.

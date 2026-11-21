@@ -106,6 +106,25 @@ export async function removeImport(importId: string, db: WealthFlowDB = defaultD
   })
 }
 
+/**
+ * Replaces ALL stored data with a restored backup, atomically: if any write
+ * fails, the database is left exactly as it was before.
+ */
+export async function replaceAllData(data: StoredData, db: WealthFlowDB = defaultDb): Promise<void> {
+  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries]
+  await db.transaction('rw', tables, async () => {
+    await Promise.all(tables.map((t) => t.clear()))
+    await db.transactions.bulkAdd(data.transactions)
+    await db.accounts.bulkAdd(data.accounts)
+    await db.imports.bulkAdd(data.imports)
+    await db.mappings.bulkAdd(data.mappings)
+    await db.rules.bulkAdd(data.rules)
+    await db.subscriptionDecisions.bulkAdd(data.subscriptionDecisions)
+    await db.wealthItems.bulkAdd(data.wealthItems)
+    await db.wealthEntries.bulkAdd(data.wealthEntries)
+  })
+}
+
 /** Permanently erases everything WealthFlow has stored on this device. */
 export async function deleteAllData(db: WealthFlowDB = defaultDb): Promise<void> {
   const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries]

@@ -18,7 +18,7 @@ function isPairCandidate(tx: Transaction): boolean {
 
 /**
  * Finds money moving between your own accounts by matching both sides:
- * -$425.00 leaving Checking and +$425.00 arriving on the credit card.
+ * -$425.00 leaving Chequing and +$425.00 arriving on the credit card.
  *
  * A pair must:
  *   - be in two different accounts

@@ -13,6 +13,9 @@ const NOISE_WORDS = new Set(['COM', 'NET', 'WWW', 'INC', 'LLC', 'LTD', 'USA', 'U
 
 export function normalizeMerchantText(text: string): string {
   return text
+    // Remove accents first: "Hydro-Québec" -> "Hydro-Quebec", not "HYDRO QU BEC".
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, ' ')
     .split(' ')

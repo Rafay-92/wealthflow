@@ -2,8 +2,9 @@
 // exact sample files offered on the Import page.
 import cardCsv from '../../../public/sample-data/rewards-card-nov.csv?raw'
 import messyCsv from '../../../public/sample-data/messy-export.csv?raw'
-import overlapCsv from '../../../public/sample-data/everyday-checking-oct15-nov20.csv?raw'
-import octCsv from '../../../public/sample-data/everyday-checking-oct.csv?raw'
+import overlapCsv from '../../../public/sample-data/everyday-chequing-oct15-nov20.csv?raw'
+import octCsv from '../../../public/sample-data/everyday-chequing-oct.csv?raw'
+import frenchCsv from '../../../public/sample-data/compte-cheques-nov.csv?raw'
 import { describe, expect, it } from 'vitest'
 import { suggestMapping } from './detectColumns'
 import { detectHeaderRow, parseCsvText } from './parseCsv'
@@ -12,6 +13,29 @@ import type { Transaction } from '../../types/transaction'
 import { categorizeAll } from '../categorize/categorize'
 import { summarize } from '../analytics/summary'
 import { monthPeriod } from '../analytics/periods'
+
+describe('French-Canadian sample export', () => {
+  it('detects semicolons, French headers and decimal commas, and reads every row', () => {
+    const rows = parseCsvText(frenchCsv)
+    const headerRow = detectHeaderRow(rows)
+    const mapping = suggestMapping(rows[headerRow]!, rows.slice(headerRow + 1))
+    expect(mapping).toMatchObject({ amountMode: 'split', descriptionColumn: 1, debitColumn: 2, creditColumn: 3, balanceColumn: 4, decimalComma: true })
+
+    const prepared = prepareImport(rows, headerRow, mapping, [], 'qc')
+    expect(prepared.errors).toEqual([])
+    expect(prepared.rows).toHaveLength(10)
+    expect(prepared.rows[0]!.draft.amount).toBe(238000) // "2 380,00" deposit
+    expect(prepared.rows[1]!.draft.amount).toBe(-142500) // "1 425,00" withdrawal
+    expect(prepared.closing).toEqual({ balance: 566725, asOf: '2026-11-18' }) // "5 667,25"
+
+    const categorized = categorizeAll(toTransactions(prepared.rows.map((r) => r.draft), [], 'qc', 'imp'), [])
+    const byName = (d: string) => categorized.find((t) => t.description === d)!.category
+    expect(byName('HYDRO-QUÉBEC')).toBe('Utilities')
+    expect(byName('DEPOT DIRECT PAIE')).toBe('Income')
+    expect(byName('LOYER NOVEMBRE')).toBe('Housing')
+    expect(byName('VIREMENT INTERAC A MARIE')).not.toBe('Transfers') // paying a person is spending
+  })
+})
 
 /** Imports a file the way the app does, keeping only the default selection. */
 function importFile(text: string, existing: Transaction[], accountId: string, importId: string) {
@@ -25,7 +49,7 @@ describe('sample files, categorised together', () => {
   const overlap = importFile(overlapCsv, october, 'chk', 'b')
   const card = importFile(cardCsv, [...october, ...overlap], 'card', 'c')
   const all = categorizeAll([...october, ...overlap, ...card], [], [
-    { id: 'chk', name: 'Everyday Checking', type: 'checking' },
+    { id: 'chk', name: 'Everyday Chequing', type: 'checking' },
     { id: 'card', name: 'Rewards Card', type: 'credit' },
   ])
   const find = (description: string) => all.find((t) => t.description === description)!
@@ -81,14 +105,14 @@ describe('sample files', () => {
     expect(result.headerRow).toBe(3) // 4th line, after two info lines and a blank one
     expect(result.mapping).toMatchObject({ amountMode: 'split', dateColumn: 0, descriptionColumn: 2 })
     expect(result.errors).toEqual([])
-    const refund = result.rows.find((r) => r.draft.description === 'AMAZON.COM REFUND')!
+    const refund = result.rows.find((r) => r.draft.description === 'AMAZON.CA REFUND')!
     expect(refund.draft.amount).toBe(1999)
     expect(result.rows[0]!.draft.amount).toBe(-3412)
   })
 
   it('messy export: keeps good rows and explains each bad one', () => {
     const result = run(messyCsv)
-    expect(result.rows.map((r) => r.draft.description)).toEqual(['COFFEE BEAN', 'CVS PHARMACY', 'FARMERS MARKET, DOWNTOWN'])
+    expect(result.rows.map((r) => r.draft.description)).toEqual(['COFFEE BEAN', 'SHOPPERS DRUG MART', 'FARMERS MARKET, DOWNTOWN'])
     expect(result.errors.map((e) => e.rowNumber)).toEqual([3, 4, 5, 8])
   })
 })

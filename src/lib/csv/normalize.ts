@@ -43,7 +43,7 @@ export function normalizeRows(
     let balance: Cents | null = null
     const rawBalance = cell(mapping.balanceColumn)
     if (rawBalance) {
-      balance = parseAmountToCents(rawBalance)
+      balance = parseAmountToCents(rawBalance, { decimalComma: mapping.decimalComma ?? false })
       if (balance === null) return fail(`Balance “${rawBalance}” isn’t a valid amount.`)
     }
 
@@ -55,19 +55,20 @@ export function normalizeRows(
 
 /** Returns the signed amount in cents, or an error message. */
 function readAmount(cell: (column: number | null) => string, mapping: ColumnMapping): Cents | string {
+  const format = { decimalComma: mapping.decimalComma ?? false }
   let amount: Cents
 
   if (mapping.amountMode === 'single') {
     const raw = cell(mapping.amountColumn)
     if (!raw) return 'Missing amount.'
-    const parsed = parseAmountToCents(raw)
+    const parsed = parseAmountToCents(raw, format)
     if (parsed === null) return `“${raw}” isn’t a valid amount.`
     amount = parsed
   } else {
     const rawOut = cell(mapping.debitColumn)
     const rawIn = cell(mapping.creditColumn)
-    const out = rawOut ? parseAmountToCents(rawOut) : 0
-    const into = rawIn ? parseAmountToCents(rawIn) : 0
+    const out = rawOut ? parseAmountToCents(rawOut, format) : 0
+    const into = rawIn ? parseAmountToCents(rawIn, format) : 0
     if (out === null) return `Money-out value “${rawOut}” isn’t a valid amount.`
     if (into === null) return `Money-in value “${rawIn}” isn’t a valid amount.`
     if (out !== 0 && into !== 0) return 'Row has both a money-out and a money-in amount.'

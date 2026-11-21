@@ -41,9 +41,10 @@ interface LoadedFile {
 const NEW_ACCOUNT_ID = '__new-account'
 
 const SAMPLE_FILES = [
-  { file: 'everyday-checking-oct.csv', label: 'Checking, October', note: 'One amount column, with balance' },
-  { file: 'everyday-checking-oct15-nov20.csv', label: 'Checking, Oct 15 – Nov 20', note: 'Overlaps the first file: try duplicates' },
+  { file: 'everyday-chequing-oct.csv', label: 'Chequing, October', note: 'One amount column, with balance' },
+  { file: 'everyday-chequing-oct15-nov20.csv', label: 'Chequing, Oct 15 – Nov 20', note: 'Overlaps the first file: try duplicates' },
   { file: 'rewards-card-nov.csv', label: 'Credit card, November', note: 'Info lines on top, debit/credit columns' },
+  { file: 'compte-cheques-nov.csv', label: 'Compte chèques (French)', note: 'Quebec-style: semicolons, 1 234,56 amounts' },
   { file: 'messy-export.csv', label: 'Messy export', note: 'Contains rows that can’t be read' },
 ]
 

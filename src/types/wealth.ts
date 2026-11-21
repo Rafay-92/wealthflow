@@ -6,11 +6,13 @@ export type WealthKind = 'asset' | 'liability'
 /** The kinds of things you can track, each either an asset or a liability. */
 export const WEALTH_TYPES = [
   { value: 'cash', label: 'Cash & bank accounts', kind: 'asset' },
-  { value: 'investment', label: 'Investments & retirement', kind: 'asset' },
+  { value: 'registered', label: 'Registered (TFSA, RRSP, FHSA, RESP)', kind: 'asset' },
+  { value: 'investment', label: 'Non-registered investments', kind: 'asset' },
   { value: 'property', label: 'Property', kind: 'asset' },
   { value: 'vehicle', label: 'Vehicle', kind: 'asset' },
   { value: 'other-asset', label: 'Other asset', kind: 'asset' },
   { value: 'credit-card', label: 'Credit card', kind: 'liability' },
+  { value: 'line-of-credit', label: 'Line of credit (incl. HELOC)', kind: 'liability' },
   { value: 'loan', label: 'Loan', kind: 'liability' },
   { value: 'mortgage', label: 'Mortgage', kind: 'liability' },
   { value: 'other-liability', label: 'Other debt', kind: 'liability' },

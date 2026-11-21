@@ -183,6 +183,17 @@ export function ColumnMapper(props: ColumnMapperProps) {
             <ColumnSelect value={mapping.balanceColumn} options={columnOptions} onChange={(v) => set({ balanceColumn: v })} optional />
           </Field>
 
+          <Field label="Number format" hint="French-language exports (e.g. from Quebec banks) use a comma for cents.">
+            <select
+              className={fieldClass}
+              value={mapping.decimalComma ? 'comma' : 'point'}
+              onChange={(e) => set({ decimalComma: e.target.value === 'comma' })}
+            >
+              <option value="point">1,234.56 (English)</option>
+              <option value="comma">1 234,56 (French)</option>
+            </select>
+          </Field>
+
           <label className="flex cursor-pointer items-start gap-3 text-sm">
             <input type="checkbox" className="mt-0.5 size-4 accent-positive" checked={mapping.invertAmounts} onChange={(e) => set({ invertAmounts: e.target.checked })} />
             <span>
@@ -294,7 +305,7 @@ function Radio({ checked, onChange, label, hint }: { checked: boolean; onChange:
 }
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
-  { value: 'checking', label: 'Checking' },
+  { value: 'checking', label: 'Chequing' },
   { value: 'savings', label: 'Savings' },
   { value: 'credit', label: 'Credit card' },
 ]
@@ -322,7 +333,7 @@ function AccountPicker({ accounts, value, onChange }: { accounts: readonly Accou
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <input
             className={fieldClass}
-            placeholder="Account name, e.g. Everyday Checking"
+            placeholder="Account name, e.g. Everyday Chequing"
             value={value.name}
             maxLength={60}
             onChange={(e) => onChange({ ...value, name: e.target.value })}

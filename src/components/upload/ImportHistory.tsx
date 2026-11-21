@@ -3,7 +3,7 @@ import type { Account } from '../../types/account'
 import type { ImportRecord } from '../../types/import'
 import { Button } from '../ui/Button'
 
-const dateTime = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+const dateTime = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium', timeStyle: 'short' })
 
 interface ImportHistoryProps {
   imports: readonly ImportRecord[]

@@ -23,6 +23,35 @@ describe('parseAmountToCents', () => {
     expect(parseAmountToCents(input)).toBe(expected)
   })
 
+  it.each([
+    ['CA$1,234.56', 123456],
+    ['C$5', 500],
+    ['1,234.56 CAD', 123456],
+    ['CAD -12.00', -1200],
+    ['-$5 ', -500],
+    ['12.34 $', 1234], // French-style trailing dollar sign
+  ])('reads Canadian currency markers: %j -> %i', (input, expected) => {
+    expect(parseAmountToCents(input)).toBe(expected)
+  })
+
+  it.each([
+    ['12,34', 1234],
+    ['1 234,56 $', 123456],
+    ['1 234,56', 123456], // non-breaking space as thousands separator
+    ['1.234,56', 123456],
+    ['-1 234,5', -123450],
+    ['(45,10 $)', -4510],
+    ['1234', 123400],
+  ])('reads French-Canadian numbers with decimalComma: %j -> %i', (input, expected) => {
+    expect(parseAmountToCents(input, { decimalComma: true })).toBe(expected)
+  })
+
+  it('rejects badly grouped French-Canadian numbers and keeps the English default', () => {
+    expect(parseAmountToCents('12 34,56', { decimalComma: true })).toBeNull()
+    expect(parseAmountToCents('12,345', { decimalComma: true })).toBeNull() // 3 decimals
+    expect(parseAmountToCents('1 234,56')).toBeNull() // not without the option
+  })
+
   it('avoids floating-point errors that parseFloat * 100 would cause', () => {
     // parseFloat('1.15') * 100 === 114.99999999999999
     expect(parseAmountToCents('1.15')).toBe(115)
@@ -51,7 +80,7 @@ describe('parseAmountToCents', () => {
 })
 
 describe('formatCents', () => {
-  it('formats US dollars with separators', () => {
+  it('formats Canadian dollars with separators', () => {
     expect(formatCents(123456)).toBe('$1,234.56')
     expect(formatCents(5)).toBe('$0.05')
     expect(formatCents(0)).toBe('$0.00')

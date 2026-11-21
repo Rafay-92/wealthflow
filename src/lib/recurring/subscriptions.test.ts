@@ -79,8 +79,8 @@ describe('findSubscriptions', () => {
 
   it('finds the sample subscriptions and bills, but not groceries', () => {
     const names = findSubscriptions(SAMPLE_TRANSACTIONS, SAMPLE_DATA_END).map((s) => s.name)
-    expect(names).toEqual(expect.arrayContaining(['NETFLIX.COM', 'SPOTIFY USA', 'PLANET FITNESS', 'APPLE.COM/BILL ICLOUD', 'MAPLE COURT APARTMENTS RENT']))
-    expect(names).not.toContain('WHOLE FOODS MARKET')
+    expect(names).toEqual(expect.arrayContaining(['NETFLIX.COM', 'SPOTIFY', 'GOODLIFE FITNESS', 'APPLE.COM/BILL ICLOUD', 'MAPLE COURT APARTMENTS RENT']))
+    expect(names).not.toContain('LOBLAWS')
   })
 })
 

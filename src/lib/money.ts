@@ -11,7 +11,12 @@
  * We convert to dollars only at the last moment, for display.
  */
 
-/** An integer amount of US cents. Negative = money out, positive = money in. */
+/** The app's currency. Every amount is in Canadian dollars. */
+export const CURRENCY = 'CAD'
+/** English (Canada) number formatting: "$1,234.56". */
+const LOCALE = 'en-CA'
+
+/** An integer amount of cents (CAD). Negative = money out, positive = money in. */
 export type Cents = number
 
 export function isCents(value: unknown): value is Cents {
@@ -24,19 +29,33 @@ function assertCents(value: number, context: string): void {
   }
 }
 
+export interface AmountFormat {
+  /**
+   * French-Canadian style, common in Quebec bank exports (e.g. Desjardins):
+   * comma for decimals, space or period for thousands: "1 234,56 $".
+   */
+  decimalComma?: boolean
+}
+
 /**
  * Converts a money string from a bank statement into cents.
  * Returns null when the text isn't an unambiguous amount, so callers
  * can report the problem instead of importing a wrong number.
  *
- * Accepts:  "12.34"  "-12.34"  "+12.34"  "$1,234.56"  "(12.34)"  "12.34-"  ".5"
- * Rejects:  ""  "abc"  "12.345"  "12,34" (European decimal — ambiguous)  "1,23,456"
+ * Accepts:  "12.34"  "-12.34"  "+12.34"  "$1,234.56"  "CA$1,234.56"  "1,234.56 CAD"
+ *           "(12.34)"  "12.34-"  ".5"
+ * With { decimalComma: true }:  "1 234,56 $"  "1.234,56"  "-12,50"
+ * Rejects:  ""  "abc"  "12.345"  "1,23,456", and "12,34" unless decimalComma is set
+ *           (it could mean 12.34 or 1,234 — we never guess).
  *
  * Parses the digits as text rather than doing `parseFloat(x) * 100`,
  * because e.g. 1.005 * 100 === 100.49999999999999.
  */
-export function parseAmountToCents(input: string): Cents | null {
-  let text = input.trim().replace(/−/g, '-') // normalise the Unicode minus sign
+export function parseAmountToCents(input: string, { decimalComma = false }: AmountFormat = {}): Cents | null {
+  let text = input
+    .trim()
+    .replace(/−/g, '-') // Unicode minus sign
+    .replace(/[  ]/g, ' ') // non-breaking spaces, used as thousands separators in French
   if (text === '') return null
 
   let negative = false
@@ -51,21 +70,28 @@ export function parseAmountToCents(input: string): Cents | null {
     negative = !negative
     text = text.slice(0, -1).trim()
   }
-  // A leading sign may come before or after the dollar sign: -$5 or $-5
+  // Signs and currency markers can come in either order, before or after the
+  // number: -$5, $-5, CA$ -5, 5 $, 5.00 CAD. Peel them off until none are left.
   const takeSign = () => {
     if (text.startsWith('-') || text.startsWith('+')) {
       if (text.startsWith('-')) negative = !negative
       text = text.slice(1).trim()
     }
   }
-  takeSign()
-  if (text.startsWith('$')) {
-    text = text.slice(1).trim()
+  for (let i = 0; i < 3; i++) {
     takeSign()
+    text = text
+      .replace(/^(CAD|CA\$|C\$|\$)\s*/i, '')
+      .replace(/\s*(CAD|CA\$|C\$|\$)$/i, '')
+      .trim()
   }
 
-  // Thousands separators are only allowed in correct groups of three.
-  if (text.includes(',')) {
+  if (decimalComma) {
+    // "1 234,56" or "1.234,56": thousands in groups of three, comma for decimals.
+    if (/[ .]/.test(text) && !/^\d{1,3}([ .]\d{3})+(,\d*)?$/.test(text)) return null
+    text = text.replace(/[ .]/g, '').replace(',', '.')
+  } else if (text.includes(',')) {
+    // Thousands separators are only allowed in correct groups of three.
     if (!/^\d{1,3}(,\d{3})+(\.\d*)?$/.test(text)) return null
     text = text.replace(/,/g, '')
   }
@@ -82,15 +108,13 @@ export function parseAmountToCents(input: string): Cents | null {
   return negative ? -cents : cents
 }
 
-const usdFormatter = new Intl.NumberFormat('en-US', {
+const moneyFormatter = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY })
+const wholeFormatter = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY, maximumFractionDigits: 0 })
+const compactFormatter = new Intl.NumberFormat(LOCALE, {
   style: 'currency',
-  currency: 'USD',
-})
-
-const usdWholeFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
+  currency: CURRENCY,
+  notation: 'compact',
+  maximumFractionDigits: 1,
 })
 
 export interface FormatOptions {
@@ -103,24 +127,17 @@ export interface FormatOptions {
 /** Formats cents for display: 123456 -> "$1,234.56". */
 export function formatCents(cents: Cents, options: FormatOptions = {}): string {
   assertCents(cents, 'formatCents')
-  const formatter = options.whole ? usdWholeFormatter : usdFormatter
+  const formatter = options.whole ? wholeFormatter : moneyFormatter
   const formatted = formatter.format(Math.abs(cents) / 100)
   if (cents < 0) return `-${formatted}`
   if (options.signed && cents > 0) return `+${formatted}`
   return formatted
 }
 
-const usdCompactFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  notation: 'compact',
-  maximumFractionDigits: 1,
-})
-
 /** Short form for chart axes: 523400 -> "$5.2K". */
 export function formatCentsCompact(cents: Cents): string {
   assertCents(cents, 'formatCentsCompact')
-  const formatted = usdCompactFormatter.format(Math.abs(cents) / 100)
+  const formatted = compactFormatter.format(Math.abs(cents) / 100)
   return cents < 0 ? `-${formatted}` : formatted
 }
 

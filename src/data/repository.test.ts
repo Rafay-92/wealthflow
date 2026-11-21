@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { tx } from '../test/factories'
 import type { ImportRecord } from '../types/import'
 import { WealthFlowDB } from './db'
-import { commitImport, deleteAllData, loadAll, removeImport, saveRuleChange } from './repository'
+import { commitImport, deleteAllData, loadAll, removeImport, replaceAllData, saveRuleChange } from './repository'
 
 let db: WealthFlowDB
 let n = 0
@@ -102,6 +102,18 @@ describe('repository', () => {
     expect(data.transactions.map((t) => t.id)).toEqual(['kept'])
     expect(data.rules).toEqual([])
     expect(upgraded.verno).toBe(4)
+  })
+
+  it('replaces everything with a backup, or nothing at all if the backup is bad', async () => {
+    await commitImport({ record: record('imp1', 1), account, mapping: null, transactions: [tx({ id: 'old' })] }, db)
+    const restored = { ...(await loadAll(db)), transactions: [tx({ id: 'new1' }), tx({ id: 'new2' })], imports: [] }
+    await replaceAllData(restored, db)
+    expect((await loadAll(db)).transactions.map((t) => t.id).sort()).toEqual(['new1', 'new2'])
+
+    // A duplicate id makes bulkAdd fail halfway: the previous data must survive untouched.
+    const bad = { ...restored, transactions: [tx({ id: 'x' }), tx({ id: 'x' })] }
+    await expect(replaceAllData(bad, db)).rejects.toThrow()
+    expect((await loadAll(db)).transactions.map((t) => t.id).sort()).toEqual(['new1', 'new2'])
   })
 
   it('deletes everything', async () => {

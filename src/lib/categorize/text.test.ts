@@ -8,6 +8,8 @@ describe('normalizeMerchantText', () => {
     ['APPLE.COM/BILL', 'APPLE BILL'],
     ["TRADER JOE'S #552", 'TRADER JOE S'],
     ['POS PURCHASE T-MOBILE 10/31', 'T MOBILE'],
+    ['Hydro-Québec', 'HYDRO QUEBEC'],
+    ['Épicerie Métro', 'EPICERIE METRO'],
   ])('%j -> %j', (input, expected) => {
     expect(normalizeMerchantText(input)).toBe(expected)
   })

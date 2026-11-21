@@ -34,9 +34,32 @@ describe('suggestMapping', () => {
     })
   })
 
+  it('maps a French-Canadian export and detects the decimal comma', () => {
+    const mapping = suggestMapping(
+      ['Date', 'Libellé', 'Retrait', 'Dépôt', 'Solde'],
+      [
+        ['2026-11-03', 'LOBLAWS', '52,30', '', '1 234,56'],
+        ['2026-11-04', 'PAIE', '', '2 450,00', '3 684,56'],
+      ],
+    )
+    expect(mapping).toMatchObject({
+      dateColumn: 0,
+      descriptionColumn: 1,
+      amountMode: 'split',
+      debitColumn: 2,
+      creditColumn: 3,
+      balanceColumn: 4,
+      decimalComma: true,
+    })
+  })
+
+  it('keeps the English number format for English exports', () => {
+    expect(suggestMapping(['Date', 'Description', 'Amount'], [['2026-11-03', 'X', '-1,234.56']]).decimalComma).toBe(false)
+  })
+
   it('finds an unlabelled amount column from its numbers', () => {
     const mapping = suggestMapping(
-      ['Date', 'Payee', 'Value (USD)'],
+      ['Date', 'Payee', 'Value (CAD)'],
       [['2026-11-03', 'COFFEE', '-4.50'], ['2026-11-04', 'PAY', '100']],
     )
     expect(mapping.amountColumn).toBe(2)

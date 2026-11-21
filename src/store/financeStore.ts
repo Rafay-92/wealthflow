@@ -37,6 +37,8 @@ interface FinanceState {
   commitImport: (input: repository.CommitImportInput) => Promise<void>
   removeImport: (importId: string) => Promise<void>
   deleteAllData: () => Promise<void>
+  /** Replaces everything with a checked backup. */
+  restoreBackup: (data: repository.StoredData) => Promise<void>
   /** Sets a category by hand. Automatic categorisation will never change it. */
   setCategory: (transactionId: string, category: Category) => Promise<void>
   /** Hands a transaction back to automatic categorisation. */
@@ -95,6 +97,11 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
 
   removeImport: async (importId) => {
     await repository.removeImport(importId)
+    await get().load()
+  },
+
+  restoreBackup: async (data) => {
+    await repository.replaceAllData(data)
     await get().load()
   },
 

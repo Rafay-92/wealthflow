@@ -4,6 +4,8 @@ import { tx } from '../../test/factories'
 import type { CategoryRule, Transaction } from '../../types/transaction'
 import { categorizeAll, previewCategories } from './categorize'
 import { findTransferPairs } from './transfers'
+import { BUILTIN_KEYWORDS } from './builtinRules'
+import { normalizeMerchantText } from './text'
 
 const one = (t: Transaction, rules: CategoryRule[] = []) => categorizeAll([t], rules)[0]!
 const rule = (keyword: string, category: CategoryRule['category']): CategoryRule => ({
@@ -32,6 +34,24 @@ describe('built-in keywords', () => {
     expect(result.categorySource).toBe('keyword')
   })
 
+  it.each([
+    ['LOBLAWS #1234 TORONTO ON', -8450, 'Groceries'],
+    ['TIM HORTONS #2231', -425, 'Restaurants'],
+    ['PRESTO AUTOLOAD', -5000, 'Transportation'],
+    ['PETRO-CANADA 4410', -6123, 'Transportation'],
+    ['TORONTO HYDRO', -9640, 'Utilities'],
+    ['Hydro-Québec', -11200, 'Utilities'],
+    ['ROGERS ******1234', -9500, 'Utilities'],
+    ['SHOPPERS DRUG MART #0912', -2399, 'Healthcare'],
+    ['CANADIAN TIRE #145', -6410, 'Shopping'],
+    ['CINEPLEX ENTERTAINMENT', -3100, 'Entertainment'],
+    ['TACO BELL', -1200, 'Restaurants'], // not "Bell" the phone company
+    ['CANADA GST', 12250, 'Income'],
+    ['DEPOT DIRECT PAIE', 245000, 'Income'],
+  ] as const)('Canada: %j -> %s', (description, amount, category) => {
+    expect(one(tx({ description, amount })).category).toBe(category)
+  })
+
   it('treats a refund from a shop as that shop’s category (it reduces spending)', () => {
     expect(one(tx({ description: 'AMAZON.COM REFUND', amount: 3499 })).category).toBe('Shopping')
   })
@@ -39,6 +59,19 @@ describe('built-in keywords', () => {
   it('only counts "INTEREST" as income when money comes in', () => {
     expect(one(tx({ description: 'INTEREST PAYMENT', amount: 412 })).category).toBe('Income')
     expect(one(tx({ description: 'INTEREST CHARGE', amount: -1250 })).category).toBe('Other')
+  })
+
+  it('has no keyword that cleaning erases or collapses into one generic word', () => {
+    // Cleaning drops filler words (INC, COM…) and words with digits. A keyword
+    // like "METRO INC" would silently become just "METRO" and start matching
+    // "METRO WATER DISTRICT"; "FIT4LESS" would vanish entirely.
+    // ("APPLE.COM/BILL" -> "APPLE BILL" is fine: still specific.)
+    const broken = BUILTIN_KEYWORDS.flatMap((g) => g.keywords).filter((k) => {
+      const cleaned = normalizeMerchantText(k)
+      const wordsBefore = k.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean).length
+      return cleaned === '' || (wordsBefore > 1 && cleaned.split(' ').length === 1)
+    })
+    expect(broken).toEqual([])
   })
 
   it('reproduces every category in the sample data', () => {
@@ -94,6 +127,19 @@ describe('transfers', () => {
   it('does not treat payments to other people as transfers', () => {
     expect(one(tx({ description: 'ZELLE TRANSFER TO ALEX', amount: -4000 })).category).toBe('Other')
     expect(one(tx({ description: 'VENMO PAYMENT', amount: -2500 })).category).not.toBe('Transfers')
+  })
+
+  it('recognises Canadian banks’ transfer wording', () => {
+    expect(one(tx({ description: 'TFR-TO 5214821', amount: -50000 })).category).toBe('Transfers') // TD
+    expect(one(tx({ description: 'WWW TRF DDA - 4021', amount: -50000 })).category).toBe('Transfers') // RBC
+    expect(one(tx({ description: 'MB-TRANSFER TO DEPOSIT ACCOUNT', amount: -50000 })).category).toBe('Transfers') // CIBC
+    expect(one(tx({ description: 'PAIEMENT MERCI', amount: 42500 })).category).toBe('Transfers')
+  })
+
+  it('treats Interac e-Transfers as payments to people, not transfers', () => {
+    expect(one(tx({ description: 'SEND E-TFR ***Xd4 ALEX', amount: -4000 })).category).not.toBe('Transfers')
+    expect(one(tx({ description: 'INTERAC E-TRANSFER TO SAM', amount: -2500 })).category).not.toBe('Transfers')
+    expect(one(tx({ description: 'VIREMENT INTERAC A MARIE', amount: -3000 })).category).not.toBe('Transfers')
   })
 
   it('lets a merchant win over weak wording like AUTOPAY', () => {

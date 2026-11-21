@@ -2,10 +2,15 @@ import type { ColumnMapping } from '../../types/import'
 import { parseAmountToCents } from '../money'
 import { detectDateFormat } from './dateFormats'
 
+/** Lower-case with accents removed: "Dépôt" -> "depot", so French headers match simple patterns. */
+function plain(header: string): string {
+  return header.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+}
+
 /** Finds the first header matching any pattern, trying patterns in priority order. */
 function findColumn(headers: readonly string[], patterns: readonly RegExp[], exclude: ReadonlySet<number>): number | null {
   for (const pattern of patterns) {
-    const index = headers.findIndex((h, i) => !exclude.has(i) && pattern.test(h.trim()))
+    const index = headers.findIndex((h, i) => !exclude.has(i) && pattern.test(plain(h)))
     if (index !== -1) return index
   }
   return null
@@ -23,16 +28,25 @@ export function suggestMapping(headers: readonly string[], dataRows: readonly st
   }
 
   const dateColumn = take(
-    findColumn(headers, [/^(transaction|trans\.?|txn)\s*date$/i, /^date$/i, /^(posted|posting|post)\s*date$/i, /date/i], used),
+    findColumn(
+      headers,
+      [/^(transaction|trans\.?|txn)\s*date$/i, /^date( de (la )?transaction)?$/i, /^(posted|posting|post)\s*date$/i, /date/i],
+      used,
+    ),
   )
-  const balanceColumn = take(findColumn(headers, [/balance/i], used))
-  const debitColumn = take(findColumn(headers, [/debit|withdrawal|money\s*out|paid\s*out|outflow/i], used))
-  const creditColumn = take(findColumn(headers, [/credit|deposit|money\s*in|paid\s*in|inflow/i], used))
-  let amountColumn = take(findColumn(headers, [/^amount$/i, /amount/i, /^value$/i], used))
+  // English and French (Quebec) header names. Headers are compared without accents.
+  const balanceColumn = take(findColumn(headers, [/balance|solde/i], used))
+  const debitColumn = take(findColumn(headers, [/debit|withdrawal|retrait|money\s*out|paid\s*out|outflow/i], used))
+  const creditColumn = take(findColumn(headers, [/credit|deposit|depot|money\s*in|paid\s*in|inflow/i], used))
+  let amountColumn = take(findColumn(headers, [/^(amount|montant)$/i, /amount|montant/i, /^value$/i], used))
   const descriptionColumn = take(
     findColumn(
       headers,
-      [/^description$/i, /description|details|memo|narrative|payee|merchant/i, /name|reference|transaction/i],
+      [
+        /^description$/i,
+        /description|details|memo|narrative|payee|merchant|libelle|commercant|beneficiaire/i,
+        /name|reference|transaction/i,
+      ],
       used,
     ),
   )
@@ -45,7 +59,7 @@ export function suggestMapping(headers: readonly string[], dataRows: readonly st
     for (let i = 0; i < width; i++) {
       if (used.has(i)) continue
       const values = dataRows.map((row) => row[i] ?? '').filter((v) => v !== '')
-      const numeric = values.filter((v) => parseAmountToCents(v) !== null).length
+      const numeric = values.filter((v) => parseAmountToCents(v) !== null || parseAmountToCents(v, { decimalComma: true }) !== null).length
       if (values.length > 0 && numeric / values.length >= 0.9) {
         amountColumn = take(i)
         break
@@ -54,6 +68,7 @@ export function suggestMapping(headers: readonly string[], dataRows: readonly st
   }
 
   const dateValues = dateColumn === null ? [] : dataRows.map((row) => row[dateColumn] ?? '')
+  const moneyColumns = [...(split ? [debitColumn, creditColumn] : [amountColumn]), balanceColumn].filter((c): c is number => c !== null)
 
   return {
     dateColumn,
@@ -65,7 +80,20 @@ export function suggestMapping(headers: readonly string[], dataRows: readonly st
     balanceColumn,
     dateFormat: detectDateFormat(dateValues).format,
     invertAmounts: false,
+    decimalComma: detectDecimalComma(moneyColumns.flatMap((c) => dataRows.map((row) => row[c] ?? ''))),
   }
+}
+
+/**
+ * True when the amounts only make sense in French-Canadian format ("1 234,56"):
+ * more values parse with a decimal comma than without one. Ties keep the
+ * English default.
+ */
+export function detectDecimalComma(values: readonly string[]): boolean {
+  const sample = values.filter((v) => v.trim() !== '').slice(0, 200)
+  const english = sample.filter((v) => parseAmountToCents(v) !== null).length
+  const french = sample.filter((v) => parseAmountToCents(v, { decimalComma: true }) !== null).length
+  return french > english
 }
 
 /** Problems that stop the mapping from being usable. Empty array = ready. */

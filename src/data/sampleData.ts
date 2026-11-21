@@ -18,8 +18,8 @@ export const SAMPLE_DATA_END: ISODate = '2026-11-20'
 const SAMPLE_MONTHS = monthsEndingAt('2026-11', 6)
 
 export const SAMPLE_ACCOUNTS: Account[] = [
-  { id: 'chk', name: 'Everyday Checking', type: 'checking', balance: 421836, balanceAsOf: SAMPLE_DATA_END },
-  { id: 'sav', name: 'High-Yield Savings', type: 'savings', balance: 1265000, balanceAsOf: SAMPLE_DATA_END },
+  { id: 'chk', name: 'Everyday Chequing', type: 'checking', balance: 421836, balanceAsOf: SAMPLE_DATA_END },
+  { id: 'sav', name: 'High-Interest Savings', type: 'savings', balance: 1265000, balanceAsOf: SAMPLE_DATA_END },
 ]
 
 /** Mulberry32: a tiny, well-known seeded random number generator. Returns 0 ≤ n < 1. */
@@ -58,48 +58,48 @@ function generate(): Transaction[] {
 
     // Fixed bills
     add(1, 'MAPLE COURT APARTMENTS RENT', -165000, 'Housing')
-    add(8, 'CITY POWER & LIGHT', -dollars(78, 132), 'Utilities')
-    add(12, 'METRO WATER DISTRICT', -dollars(38, 46), 'Utilities')
-    add(18, 'FIBERNET INTERNET', -6500, 'Utilities')
-    add(20, 'T-MOBILE', -7000, 'Utilities')
+    add(8, 'TORONTO HYDRO', -dollars(78, 132), 'Utilities')
+    add(12, 'CITY OF TORONTO WATER', -dollars(38, 46), 'Utilities')
+    add(18, 'ROGERS INTERNET', -6500, 'Utilities')
+    add(20, 'FIDO MOBILE', -7000, 'Utilities')
 
     // Subscriptions
-    add(3, 'PLANET FITNESS', -2499, 'Subscriptions')
+    add(3, 'GOODLIFE FITNESS', -2499, 'Subscriptions')
     add(5, 'NETFLIX.COM', -1549, 'Subscriptions')
-    add(9, 'SPOTIFY USA', -1199, 'Subscriptions')
+    add(9, 'SPOTIFY', -1199, 'Subscriptions')
     add(22, 'APPLE.COM/BILL ICLOUD', -299, 'Subscriptions')
 
     // Variable spending. Restaurant spending rises in the last two months,
     // which gives the future insights feature a real trend to find.
-    const groceryStores = ['WHOLE FOODS MARKET', "TRADER JOE'S", 'SAFEWAY']
+    const groceryStores = ['LOBLAWS', 'NO FRILLS', 'SOBEYS']
     repeat(int(4, 6), () => add(anyDay(), pick(groceryStores), -dollars(32, 145), 'Groceries'))
 
-    const restaurants = ['STARBUCKS', 'CHIPOTLE', 'SWEETGREEN', 'THAI BASIL KITCHEN', "JOE'S PIZZA", 'DOORDASH']
+    const restaurants = ['STARBUCKS', 'TIM HORTONS', 'SWISS CHALET', 'THAI BASIL KITCHEN', 'PIZZA PIZZA', 'SKIPTHEDISHES']
     repeat(int(6, 9) + (index >= 4 ? 3 : 0), () => add(anyDay(), pick(restaurants), -dollars(6, 68), 'Restaurants'))
 
-    add(2, 'CLIPPER TRANSIT PASS', -8600, 'Transportation')
+    add(2, 'PRESTO TRANSIT PASS', -8600, 'Transportation')
     repeat(int(1, 4), () => add(anyDay(), 'UBER TRIP', -dollars(11, 38), 'Transportation'))
-    repeat(int(1, 2), () => add(anyDay(), 'SHELL OIL', -dollars(34, 58), 'Transportation'))
+    repeat(int(1, 2), () => add(anyDay(), 'PETRO-CANADA', -dollars(34, 58), 'Transportation'))
 
-    repeat(int(2, 4), () => add(anyDay(), 'AMAZON.COM', -dollars(14, 120), 'Shopping'))
-    repeat(int(0, 2), () => add(anyDay(), 'TARGET', -dollars(22, 95), 'Shopping'))
+    repeat(int(2, 4), () => add(anyDay(), 'AMAZON.CA', -dollars(14, 120), 'Shopping'))
+    repeat(int(0, 2), () => add(anyDay(), 'CANADIAN TIRE', -dollars(22, 95), 'Shopping'))
 
-    if (chance(0.6)) add(anyDay(), 'AMC THEATRES', -dollars(14, 32), 'Entertainment')
+    if (chance(0.6)) add(anyDay(), 'CINEPLEX', -dollars(14, 32), 'Entertainment')
     if (index === 2) add(14, 'TICKETMASTER', -14800, 'Entertainment')
 
-    if (chance(0.7)) add(anyDay(), 'CVS PHARMACY', -dollars(9, 42), 'Healthcare')
-    if (index === 3) add(19, 'BAYVIEW MEDICAL COPAY', -4000, 'Healthcare')
+    if (chance(0.7)) add(anyDay(), 'SHOPPERS DRUG MART', -dollars(9, 42), 'Healthcare')
+    if (index === 3) add(19, 'BAYVIEW DENTAL CLINIC', -4000, 'Healthcare')
 
     if (index === 1) add(6, 'UDEMY COURSE', -1999, 'Education')
     if (index === 4) add(4, 'COMMUNITY COLLEGE TUITION', -45000, 'Education')
 
     if (chance(0.5)) add(anyDay(), 'ATM WITHDRAWAL', -6000, 'Other')
-    if (index === 3) add(24, 'AMAZON.COM REFUND', 3499, 'Shopping')
+    if (index === 3) add(24, 'AMAZON.CA REFUND', 3499, 'Shopping')
 
-    // Moving money to savings: leaves checking and arrives in savings.
+    // Moving money to savings: leaves chequing and arrives in savings.
     // Both sides are Transfers, so neither counts as spending or income.
     add(16, 'TRANSFER TO SAVINGS', -50000, 'Transfers', 'chk')
-    add(16, 'TRANSFER FROM CHECKING', 50000, 'Transfers', 'sav')
+    add(16, 'TRANSFER FROM CHEQUING', 50000, 'Transfers', 'sav')
   })
 
   return rows
