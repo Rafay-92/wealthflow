@@ -6,6 +6,7 @@ import { NAV_ITEMS } from './components/layout/navigation'
 import { DashboardPage } from './pages/DashboardPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { ReportsPage } from './pages/ReportsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 import { UploadPage } from './pages/UploadPage'
 
@@ -15,6 +16,7 @@ const PAGES: Record<string, ReactNode> = {
   '/upload': <UploadPage />,
   '/transactions': <TransactionsPage />,
   '/analytics': <AnalyticsPage />,
+  '/reports': <ReportsPage />,
 }
 
 /**

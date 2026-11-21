@@ -3,8 +3,6 @@ import type { CategoryTotal } from '../../lib/analytics/byCategory'
 import { formatCents } from '../../lib/money'
 import { CATEGORY_ICONS } from '../categories'
 
-const MAX_ROWS = 6
-
 /**
  * Spending by category as a ranked bar list.
  *
@@ -12,15 +10,17 @@ const MAX_ROWS = 6
  * colours that are hard to tell apart, and people are bad at comparing
  * slice angles. Bars of one colour, each labelled with its name and
  * amount, are faster to read and accurate to compare.
+ *
+ * @param maxRows rows shown before the rest are folded into "N more categories".
  */
-export function SpendingBreakdown({ categories }: { categories: readonly CategoryTotal[] }) {
+export function SpendingBreakdown({ categories, maxRows = 6 }: { categories: readonly CategoryTotal[]; maxRows?: number }) {
   if (categories.length === 0) {
     return <p className="py-10 text-center text-sm text-ink-faint">No spending in this period.</p>
   }
 
   // Fold everything past the top rows into one "more" row, so the list stays short.
-  const shown = categories.slice(0, MAX_ROWS)
-  const rest = categories.slice(MAX_ROWS)
+  const shown = categories.slice(0, maxRows)
+  const rest = categories.slice(maxRows)
   const restTotal = rest.reduce((sum, c) => sum + c.amount, 0)
   const restShare = rest.reduce((sum, c) => sum + c.share, 0)
   const largest = categories[0]!.amount
