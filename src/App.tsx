@@ -1,0 +1,27 @@
+import { Route, Routes } from 'react-router'
+import { AppShell } from './components/layout/AppShell'
+import { NAV_ITEMS } from './components/layout/navigation'
+import { NotFoundPage } from './pages/NotFoundPage'
+import { PlaceholderPage } from './pages/PlaceholderPage'
+
+/**
+ * Maps URLs to pages. Every route is nested inside <AppShell>, so they all
+ * share the sidebar. As each stage is built, its placeholder is replaced
+ * with the real page component.
+ */
+export default function App() {
+  return (
+    <Routes>
+      <Route element={<AppShell />}>
+        {NAV_ITEMS.map((item) => (
+          <Route
+            key={item.path}
+            path={item.path}
+            element={<PlaceholderPage item={item} />}
+          />
+        ))}
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
+  )
+}

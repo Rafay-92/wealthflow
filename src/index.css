@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+
+/*
+ * WealthFlow design tokens.
+ *
+ * Every colour in the app comes from this list. Tailwind turns each
+ * `--color-*` variable into utility classes, e.g. `--color-navy-900`
+ * becomes `bg-navy-900`, `text-navy-900`, `border-navy-900`.
+ * Change a value here and the whole app updates.
+ */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* Surfaces, darkest to lightest */
+  --color-navy-950: #070d1a; /* page background */
+  --color-navy-900: #0b1426; /* sidebar */
+  --color-navy-800: #111d35; /* cards */
+  --color-navy-700: #1a2844; /* hover / raised */
+  --color-navy-600: #263657; /* borders */
+
+  /* Text */
+  --color-ink: #f5f7fb; /* primary text, near-white */
+  --color-ink-muted: #9aa6bf; /* secondary text */
+  --color-ink-faint: #64718c; /* labels, hints */
+
+  /* Meaning — used only when a colour carries information */
+  --color-positive: #3ddc97; /* income, savings, growth */
+  --color-positive-soft: #3ddc9724;
+  --color-negative: #f87171; /* overspending, debt */
+  --color-negative-soft: #f8717124;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-navy-950 font-sans text-ink antialiased;
+  }
+}
+
+/*
+ * Numbers in finance UIs should line up in columns, so every digit gets
+ * the same width ("tabular figures"). Apply with className="tabular".
+ */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
