@@ -6,6 +6,7 @@ import {
   formatMonth,
   isISODate,
   monthsEndingAt,
+  todayISO,
   toMonthKey,
 } from './dates'
 
@@ -44,6 +45,14 @@ describe('month arithmetic', () => {
 
   it('lists months ending at a given month, oldest first', () => {
     expect(monthsEndingAt('2026-02', 4)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+  })
+})
+
+describe('todayISO', () => {
+  it('uses the local calendar date', () => {
+    // 11pm local time on Nov 21: in UTC (for timezones west of UTC) it's already Nov 22.
+    expect(todayISO(new Date(2026, 10, 21, 23, 30))).toBe('2026-11-21')
+    expect(todayISO(new Date(2026, 0, 5, 0, 15))).toBe('2026-01-05')
   })
 })
 

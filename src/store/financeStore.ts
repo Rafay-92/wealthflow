@@ -6,6 +6,9 @@ import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
 import type { SubscriptionDecision, SubscriptionStatus } from '../lib/recurring/subscriptions'
 import type { Category, CategoryRule, Transaction } from '../types/transaction'
+import type { WealthEntry, WealthItem, WealthType } from '../types/wealth'
+import type { ISODate } from '../lib/dates'
+import type { Cents } from '../lib/money'
 
 /**
  * The app's shared data, held in a Zustand store.
@@ -27,6 +30,8 @@ interface FinanceState {
   mappings: SavedMapping[]
   rules: CategoryRule[]
   subscriptionDecisions: SubscriptionDecision[]
+  wealthItems: WealthItem[]
+  wealthEntries: WealthEntry[]
 
   load: () => Promise<void>
   commitImport: (input: repository.CommitImportInput) => Promise<void>
@@ -40,6 +45,10 @@ interface FinanceState {
   deleteRule: (ruleId: string) => Promise<void>
   /** Confirms or dismisses a detected subscription; null clears the decision. */
   setSubscriptionStatus: (key: string, status: SubscriptionStatus | null) => Promise<void>
+  addWealthItem: (input: { name: string; type: WealthType; value: Cents; date: ISODate; sourceAccountId?: string }) => Promise<void>
+  /** Records values for several items on one date (replacing any already recorded that day). */
+  updateWealthValues: (date: ISODate, values: { itemId: string; value: Cents }[]) => Promise<void>
+  deleteWealthItem: (itemId: string) => Promise<void>
 }
 
 /** Re-categorises and returns only the transactions whose category changed. */
@@ -57,6 +66,8 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
   mappings: [],
   rules: [],
   subscriptionDecisions: [],
+  wealthItems: [],
+  wealthEntries: [],
 
   load: async () => {
     try {
@@ -112,6 +123,22 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
     const rule: CategoryRule = { id: crypto.randomUUID(), keyword: keyword.trim(), category, createdAt: new Date().toISOString() }
     const changed = changedAfterCategorizing(transactions, [...rules, rule], accounts)
     await repository.saveRuleChange({ add: rule, transactions: changed })
+    await get().load()
+  },
+
+  addWealthItem: async ({ name, type, value, date, sourceAccountId }) => {
+    const item: WealthItem = { id: crypto.randomUUID(), name: name.trim(), type, sourceAccountId, createdAt: new Date().toISOString() }
+    await repository.saveWealth([item], [{ id: `${item.id}:${date}`, itemId: item.id, date, value }])
+    await get().load()
+  },
+
+  updateWealthValues: async (date, values) => {
+    await repository.saveWealth([], values.map(({ itemId, value }) => ({ id: `${itemId}:${date}`, itemId, date, value })))
+    await get().load()
+  },
+
+  deleteWealthItem: async (itemId) => {
+    await repository.deleteWealthItem(itemId)
     await get().load()
   },
 

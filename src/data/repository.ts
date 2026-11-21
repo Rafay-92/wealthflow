@@ -2,6 +2,7 @@ import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
 import type { SubscriptionDecision, SubscriptionStatus } from '../lib/recurring/subscriptions'
 import type { CategoryRule, Transaction } from '../types/transaction'
+import type { WealthEntry, WealthItem } from '../types/wealth'
 import { db as defaultDb, type WealthFlowDB } from './db'
 
 /**
@@ -17,18 +18,22 @@ export interface StoredData {
   mappings: SavedMapping[]
   rules: CategoryRule[]
   subscriptionDecisions: SubscriptionDecision[]
+  wealthItems: WealthItem[]
+  wealthEntries: WealthEntry[]
 }
 
 export async function loadAll(db: WealthFlowDB = defaultDb): Promise<StoredData> {
-  const [transactions, accounts, imports, mappings, rules, subscriptionDecisions] = await Promise.all([
+  const [transactions, accounts, imports, mappings, rules, subscriptionDecisions, wealthItems, wealthEntries] = await Promise.all([
     db.transactions.orderBy('date').toArray(),
     db.accounts.toArray(),
     db.imports.orderBy('importedAt').reverse().toArray(),
     db.mappings.toArray(),
     db.rules.toArray(),
     db.subscriptionDecisions.toArray(),
+    db.wealthItems.toArray(),
+    db.wealthEntries.orderBy('date').toArray(),
   ])
-  return { transactions, accounts, imports, mappings, rules, subscriptionDecisions }
+  return { transactions, accounts, imports, mappings, rules, subscriptionDecisions, wealthItems, wealthEntries }
 }
 
 /** Saves a confirm/dismiss decision, or clears it when `status` is null. */
@@ -76,6 +81,22 @@ export async function saveRuleChange(
   })
 }
 
+/** Saves a new or edited wealth item, optionally with values (atomically). */
+export async function saveWealth(items: WealthItem[], entries: WealthEntry[], db: WealthFlowDB = defaultDb): Promise<void> {
+  await db.transaction('rw', [db.wealthItems, db.wealthEntries], async () => {
+    if (items.length > 0) await db.wealthItems.bulkPut(items)
+    if (entries.length > 0) await db.wealthEntries.bulkPut(entries)
+  })
+}
+
+/** Deletes a wealth item and its whole value history. */
+export async function deleteWealthItem(itemId: string, db: WealthFlowDB = defaultDb): Promise<void> {
+  await db.transaction('rw', [db.wealthItems, db.wealthEntries], async () => {
+    await db.wealthEntries.where('itemId').equals(itemId).delete()
+    await db.wealthItems.delete(itemId)
+  })
+}
+
 /** Undoes an import: removes its transactions and its history entry. */
 export async function removeImport(importId: string, db: WealthFlowDB = defaultDb): Promise<number> {
   return db.transaction('rw', [db.transactions, db.imports], async () => {
@@ -87,7 +108,7 @@ export async function removeImport(importId: string, db: WealthFlowDB = defaultD
 
 /** Permanently erases everything WealthFlow has stored on this device. */
 export async function deleteAllData(db: WealthFlowDB = defaultDb): Promise<void> {
-  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions]
+  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries]
   await db.transaction('rw', tables, async () => {
     await Promise.all(tables.map((t) => t.clear()))
   })

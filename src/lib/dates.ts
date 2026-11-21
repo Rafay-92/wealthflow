@@ -62,6 +62,15 @@ export function dateInMonth(key: MonthKey, day: number): ISODate {
   return `${key}-${pad(day)}`
 }
 
+/**
+ * Today's date on the user's calendar. Uses LOCAL time on purpose:
+ * new Date().toISOString() is UTC, which in the evening in the Americas is
+ * already tomorrow.
+ */
+export function todayISO(now: Date = new Date()): ISODate {
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
 /** addDays('2026-11-28', 5) -> '2026-12-03' */
 export function addDays(date: ISODate, days: number): ISODate {
   const d = new Date(`${date}T00:00:00Z`)

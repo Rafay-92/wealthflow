@@ -10,6 +10,7 @@ import { ReportsPage } from './pages/ReportsPage'
 import { SubscriptionsPage } from './pages/SubscriptionsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 import { UploadPage } from './pages/UploadPage'
+import { WealthPage } from './pages/WealthPage'
 
 /** Pages that have been built. Any route not listed here shows its placeholder. */
 const PAGES: Record<string, ReactNode> = {
@@ -19,6 +20,7 @@ const PAGES: Record<string, ReactNode> = {
   '/analytics': <AnalyticsPage />,
   '/reports': <ReportsPage />,
   '/subscriptions': <SubscriptionsPage />,
+  '/wealth': <WealthPage />,
 }
 
 /**

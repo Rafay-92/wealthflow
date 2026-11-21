@@ -3,6 +3,7 @@ import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
 import type { SubscriptionDecision } from '../lib/recurring/subscriptions'
 import type { CategoryRule, Transaction } from '../types/transaction'
+import type { WealthEntry, WealthItem } from '../types/wealth'
 
 /**
  * The on-device database (IndexedDB, via the Dexie library).
@@ -24,6 +25,8 @@ export class WealthFlowDB extends Dexie {
   mappings!: EntityTable<SavedMapping, 'signature'>
   rules!: EntityTable<CategoryRule, 'id'>
   subscriptionDecisions!: EntityTable<SubscriptionDecision, 'key'>
+  wealthItems!: EntityTable<WealthItem, 'id'>
+  wealthEntries!: EntityTable<WealthEntry, 'id'>
 
   constructor(name = 'wealthflow') {
     super(name)
@@ -41,6 +44,11 @@ export class WealthFlowDB extends Dexie {
     // Stage 7: your confirm/dismiss decisions on detected subscriptions.
     this.version(3).stores({
       subscriptionDecisions: 'key',
+    })
+    // Stage 8: assets and liabilities you track, and their values over time.
+    this.version(4).stores({
+      wealthItems: 'id',
+      wealthEntries: 'id, itemId, date',
     })
   }
 }

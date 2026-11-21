@@ -26,7 +26,7 @@ const account = { id: 'chk', name: 'Checking', type: 'checking' as const }
 
 describe('repository', () => {
   it('starts empty', async () => {
-    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [] })
+    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [], wealthItems: [], wealthEntries: [] })
   })
 
   it('saves an import and loads it back, sorted by date', async () => {
@@ -101,13 +101,13 @@ describe('repository', () => {
     const data = await loadAll(upgraded)
     expect(data.transactions.map((t) => t.id)).toEqual(['kept'])
     expect(data.rules).toEqual([])
-    expect(upgraded.verno).toBe(3)
+    expect(upgraded.verno).toBe(4)
   })
 
   it('deletes everything', async () => {
     await commitImport({ record: record('imp1', 1), account, mapping: null, transactions: [tx()] }, db)
     await saveRuleChange({ add: { id: 'r', keyword: 'X', category: 'Other', createdAt: '' }, transactions: [] }, db)
     await deleteAllData(db)
-    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [] })
+    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [], wealthItems: [], wealthEntries: [] })
   })
 })
