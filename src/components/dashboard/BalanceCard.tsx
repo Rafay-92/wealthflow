@@ -43,7 +43,7 @@ export function BalanceCard({ balance, accounts }: BalanceCardProps) {
         </div>
 
         {withBalance.length > 0 && (
-          <ul className="grid gap-2 sm:grid-cols-2 md:min-w-96">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:min-w-96">
             {withBalance.map((account) => (
               <li key={account.id} className="rounded-xl bg-navy-900/60 px-4 py-3">
                 <p className="text-xs text-ink-faint">{account.name}</p>

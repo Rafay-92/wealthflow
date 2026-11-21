@@ -1,45 +1,40 @@
-import type { ReactNode } from 'react'
+import { lazy, type ComponentType } from 'react'
 import { Route, Routes } from 'react-router'
 import { AppShell } from './components/layout/AppShell'
-import { AnalyticsPage } from './pages/AnalyticsPage'
 import { NAV_ITEMS } from './components/layout/navigation'
 import { DashboardPage } from './pages/DashboardPage'
-import { InsightsPage } from './pages/InsightsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
-import { ReportsPage } from './pages/ReportsPage'
-import { SubscriptionsPage } from './pages/SubscriptionsPage'
-import { TransactionsPage } from './pages/TransactionsPage'
-import { UploadPage } from './pages/UploadPage'
-import { WealthPage } from './pages/WealthPage'
-
-/** Pages that have been built. Any route not listed here shows its placeholder. */
-const PAGES: Record<string, ReactNode> = {
-  '/': <DashboardPage />,
-  '/upload': <UploadPage />,
-  '/transactions': <TransactionsPage />,
-  '/analytics': <AnalyticsPage />,
-  '/insights': <InsightsPage />,
-  '/reports': <ReportsPage />,
-  '/subscriptions': <SubscriptionsPage />,
-  '/wealth': <WealthPage />,
-}
 
 /**
- * Maps URLs to pages. Every route is nested inside <AppShell>, so they all
- * share the sidebar.
+ * Route-level code splitting: each page except the dashboard (the first
+ * thing you see) is a separate file the browser downloads only when you
+ * first visit it. `lazy` + the <Suspense> in AppShell make that work.
  */
+function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => load().then((module) => ({ default: module[name] })))
+}
+
+const PAGES: Record<string, ComponentType> = {
+  '/': DashboardPage,
+  '/upload': lazyPage(() => import('./pages/UploadPage'), 'UploadPage'),
+  '/transactions': lazyPage(() => import('./pages/TransactionsPage'), 'TransactionsPage'),
+  '/analytics': lazyPage(() => import('./pages/AnalyticsPage'), 'AnalyticsPage'),
+  '/insights': lazyPage(() => import('./pages/InsightsPage'), 'InsightsPage'),
+  '/reports': lazyPage(() => import('./pages/ReportsPage'), 'ReportsPage'),
+  '/subscriptions': lazyPage(() => import('./pages/SubscriptionsPage'), 'SubscriptionsPage'),
+  '/wealth': lazyPage(() => import('./pages/WealthPage'), 'WealthPage'),
+  '/settings': lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage'),
+}
+
+/** Maps URLs to pages. Every route is nested inside <AppShell>, so they all share the sidebar. */
 export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        {NAV_ITEMS.map((item) => (
-          <Route
-            key={item.path}
-            path={item.path}
-            element={PAGES[item.path] ?? <PlaceholderPage item={item} />}
-          />
-        ))}
+        {NAV_ITEMS.map(({ path }) => {
+          const Page = PAGES[path]!
+          return <Route key={path} path={path} element={<Page />} />
+        })}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

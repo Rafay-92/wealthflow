@@ -1,6 +1,8 @@
 import { Menu, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
+import { ErrorBoundary } from './ErrorBoundary'
+import { NAV_ITEMS } from './navigation'
 import { Logo, Sidebar } from './Sidebar'
 
 /**
@@ -13,9 +15,11 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { pathname } = useLocation()
 
-  // Scroll back to the top when changing pages.
+  // Scroll back to the top and name the browser tab after the page.
   useEffect(() => {
     window.scrollTo(0, 0)
+    const page = NAV_ITEMS.find((item) => item.path === pathname)
+    document.title = page && page.path !== '/' ? `${page.label} · WealthFlow` : 'WealthFlow'
   }, [pathname])
 
   // Let the Escape key close the mobile drawer.
@@ -28,6 +32,14 @@ export function AppShell() {
 
   return (
     <div className="min-h-svh lg:pl-64">
+      {/* Lets keyboard users jump past the navigation. Invisible until focused with Tab. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-positive focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-navy-950"
+      >
+        Skip to content
+      </a>
+
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-navy-600/50 lg:block">
         <Sidebar />
@@ -47,10 +59,8 @@ export function AppShell() {
       </header>
 
       {/* Mobile drawer */}
-      <div
-        className={`fixed inset-0 z-30 lg:hidden ${drawerOpen ? '' : 'pointer-events-none'}`}
-        aria-hidden={!drawerOpen}
-      >
+      {/* `inert` when closed: hidden links must not be reachable with Tab either. */}
+      <div className={`fixed inset-0 z-30 lg:hidden ${drawerOpen ? '' : 'pointer-events-none'}`} inert={!drawerOpen}>
         <div
           onClick={() => setDrawerOpen(false)}
           className={`absolute inset-0 bg-navy-950/70 transition-opacity duration-200 ${drawerOpen ? 'opacity-100' : 'opacity-0'}`}
@@ -70,8 +80,13 @@ export function AppShell() {
         </aside>
       </div>
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
-        <Outlet />
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-8 outline-none sm:px-6 lg:px-10 lg:py-10">
+        {/* key={pathname}: navigating away from a crashed page resets the boundary. */}
+        <ErrorBoundary key={pathname}>
+          <Suspense fallback={null}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   )

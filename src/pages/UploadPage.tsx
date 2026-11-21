@@ -214,7 +214,7 @@ export function UploadPage() {
       />
 
       {step.kind === 'select' && (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex flex-col gap-6">
             <DropZone onFile={openFile} onReject={setError} error={error} busy={busy} />
 

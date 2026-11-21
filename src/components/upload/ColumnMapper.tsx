@@ -117,7 +117,7 @@ export function ColumnMapper(props: ColumnMapperProps) {
         </div>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="flex flex-col gap-5">
           <Field label="Header row" hint="The row with the column names. Change it if your bank adds lines above the table.">
             <select className={fieldClass} value={headerRow} onChange={(e) => props.onHeaderRowChange(Number(e.target.value))}>
@@ -129,7 +129,7 @@ export function ColumnMapper(props: ColumnMapperProps) {
             </select>
           </Field>
 
-          <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field label="Date">
               <ColumnSelect value={mapping.dateColumn} options={columnOptions} onChange={(v) => set({ dateColumn: v })} />
             </Field>
@@ -158,7 +158,7 @@ export function ColumnMapper(props: ColumnMapperProps) {
 
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Amounts</legend>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Radio checked={mapping.amountMode === 'single'} onChange={() => set({ amountMode: 'single' })} label="One amount column" hint="e.g. -12.50 and 2,450.00" />
               <Radio checked={mapping.amountMode === 'split'} onChange={() => set({ amountMode: 'split' })} label="Separate in & out columns" hint="e.g. Debit and Credit" />
             </div>
@@ -169,7 +169,7 @@ export function ColumnMapper(props: ColumnMapperProps) {
               <ColumnSelect value={mapping.amountColumn} options={columnOptions} onChange={(v) => set({ amountColumn: v })} />
             </Field>
           ) : (
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <Field label="Money out (debit)">
                 <ColumnSelect value={mapping.debitColumn} options={columnOptions} onChange={(v) => set({ debitColumn: v })} />
               </Field>
@@ -319,7 +319,7 @@ function AccountPicker({ accounts, value, onChange }: { accounts: readonly Accou
         </select>
       </Field>
       {value.mode === 'new' && (
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <input
             className={fieldClass}
             placeholder="Account name, e.g. Everyday Checking"
