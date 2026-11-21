@@ -1,5 +1,6 @@
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
+import type { SubscriptionDecision, SubscriptionStatus } from '../lib/recurring/subscriptions'
 import type { CategoryRule, Transaction } from '../types/transaction'
 import { db as defaultDb, type WealthFlowDB } from './db'
 
@@ -15,17 +16,25 @@ export interface StoredData {
   imports: ImportRecord[]
   mappings: SavedMapping[]
   rules: CategoryRule[]
+  subscriptionDecisions: SubscriptionDecision[]
 }
 
 export async function loadAll(db: WealthFlowDB = defaultDb): Promise<StoredData> {
-  const [transactions, accounts, imports, mappings, rules] = await Promise.all([
+  const [transactions, accounts, imports, mappings, rules, subscriptionDecisions] = await Promise.all([
     db.transactions.orderBy('date').toArray(),
     db.accounts.toArray(),
     db.imports.orderBy('importedAt').reverse().toArray(),
     db.mappings.toArray(),
     db.rules.toArray(),
+    db.subscriptionDecisions.toArray(),
   ])
-  return { transactions, accounts, imports, mappings, rules }
+  return { transactions, accounts, imports, mappings, rules, subscriptionDecisions }
+}
+
+/** Saves a confirm/dismiss decision, or clears it when `status` is null. */
+export async function saveSubscriptionDecision(key: string, status: SubscriptionStatus | null, db: WealthFlowDB = defaultDb): Promise<void> {
+  if (status === null) await db.subscriptionDecisions.delete(key)
+  else await db.subscriptionDecisions.put({ key, status, decidedAt: new Date().toISOString() })
 }
 
 export interface CommitImportInput {
@@ -78,7 +87,7 @@ export async function removeImport(importId: string, db: WealthFlowDB = defaultD
 
 /** Permanently erases everything WealthFlow has stored on this device. */
 export async function deleteAllData(db: WealthFlowDB = defaultDb): Promise<void> {
-  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules]
+  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions]
   await db.transaction('rw', tables, async () => {
     await Promise.all(tables.map((t) => t.clear()))
   })

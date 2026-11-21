@@ -62,6 +62,13 @@ export function dateInMonth(key: MonthKey, day: number): ISODate {
   return `${key}-${pad(day)}`
 }
 
+/** addDays('2026-11-28', 5) -> '2026-12-03' */
+export function addDays(date: ISODate, days: number): ISODate {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 /** Whole days between two dates, ignoring order: daysBetween('2026-11-01', '2026-11-04') -> 3 */
 export function daysBetween(a: ISODate, b: ISODate): number {
   const ms = Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`))

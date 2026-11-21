@@ -4,6 +4,7 @@ import * as repository from '../data/repository'
 import { categorizeAll } from '../lib/categorize/categorize'
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
+import type { SubscriptionDecision, SubscriptionStatus } from '../lib/recurring/subscriptions'
 import type { Category, CategoryRule, Transaction } from '../types/transaction'
 
 /**
@@ -25,6 +26,7 @@ interface FinanceState {
   imports: ImportRecord[]
   mappings: SavedMapping[]
   rules: CategoryRule[]
+  subscriptionDecisions: SubscriptionDecision[]
 
   load: () => Promise<void>
   commitImport: (input: repository.CommitImportInput) => Promise<void>
@@ -36,6 +38,8 @@ interface FinanceState {
   resetCategory: (transactionId: string) => Promise<void>
   addRule: (keyword: string, category: Category) => Promise<void>
   deleteRule: (ruleId: string) => Promise<void>
+  /** Confirms or dismisses a detected subscription; null clears the decision. */
+  setSubscriptionStatus: (key: string, status: SubscriptionStatus | null) => Promise<void>
 }
 
 /** Re-categorises and returns only the transactions whose category changed. */
@@ -52,6 +56,7 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
   imports: [],
   mappings: [],
   rules: [],
+  subscriptionDecisions: [],
 
   load: async () => {
     try {
@@ -107,6 +112,11 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
     const rule: CategoryRule = { id: crypto.randomUUID(), keyword: keyword.trim(), category, createdAt: new Date().toISOString() }
     const changed = changedAfterCategorizing(transactions, [...rules, rule], accounts)
     await repository.saveRuleChange({ add: rule, transactions: changed })
+    await get().load()
+  },
+
+  setSubscriptionStatus: async (key, status) => {
+    await repository.saveSubscriptionDecision(key, status)
     await get().load()
   },
 

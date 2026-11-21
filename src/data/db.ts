@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
+import type { SubscriptionDecision } from '../lib/recurring/subscriptions'
 import type { CategoryRule, Transaction } from '../types/transaction'
 
 /**
@@ -22,6 +23,7 @@ export class WealthFlowDB extends Dexie {
   imports!: EntityTable<ImportRecord, 'id'>
   mappings!: EntityTable<SavedMapping, 'signature'>
   rules!: EntityTable<CategoryRule, 'id'>
+  subscriptionDecisions!: EntityTable<SubscriptionDecision, 'key'>
 
   constructor(name = 'wealthflow') {
     super(name)
@@ -35,6 +37,10 @@ export class WealthFlowDB extends Dexie {
     // version 1 automatically, keeping all their data.
     this.version(2).stores({
       rules: 'id',
+    })
+    // Stage 7: your confirm/dismiss decisions on detected subscriptions.
+    this.version(3).stores({
+      subscriptionDecisions: 'key',
     })
   }
 }

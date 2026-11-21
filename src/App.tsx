@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { SubscriptionsPage } from './pages/SubscriptionsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 import { UploadPage } from './pages/UploadPage'
 
@@ -17,6 +18,7 @@ const PAGES: Record<string, ReactNode> = {
   '/transactions': <TransactionsPage />,
   '/analytics': <AnalyticsPage />,
   '/reports': <ReportsPage />,
+  '/subscriptions': <SubscriptionsPage />,
 }
 
 /**
