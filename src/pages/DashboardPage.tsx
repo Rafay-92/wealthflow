@@ -11,6 +11,8 @@ import { Card } from '../components/ui/Card'
 import { PageHeader } from '../components/ui/PageHeader'
 import { SampleDataNotice } from '../components/ui/SampleDataNotice'
 import { Section } from '../components/ui/Section'
+import { InsightCard } from '../components/insights/InsightCard'
+import { useInsights } from '../hooks/useInsights'
 import { moneyChange, pointsChange } from '../lib/analytics/change'
 import { buildDashboard } from '../lib/analytics/dashboard'
 import type { Period } from '../lib/analytics/periods'
@@ -28,11 +30,12 @@ function formatPeriod({ start, end }: Period): string {
 
 export function DashboardPage() {
   const { status, isSample, transactions, accounts } = useDisplayData()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { insights } = useInsights(searchParams.get('month') ?? undefined)
   const loadError = useFinanceStore((s) => s.error)
 
   // The selected month lives in the URL (?month=2026-10), so it survives a
   // refresh and the browser's back button works.
-  const [searchParams, setSearchParams] = useSearchParams()
   const months = useMemo(() => availableMonths(transactions), [transactions])
   const requested = searchParams.get('month')
   const month = requested && months.includes(requested) ? requested : months[0]
@@ -120,6 +123,25 @@ export function DashboardPage() {
             style={{ animationDelay: '240ms' }}
           />
         </div>
+
+        {insights && insights.length > 0 && (
+          <Section
+            title="Insights"
+            subtitle="Calculated from your numbers"
+            style={SECTION_DELAY}
+            action={
+              <Link to={`/insights?month=${month}`} className="inline-flex items-center gap-1 text-sm font-medium text-ink-muted transition-colors hover:text-positive">
+                All insights <ArrowRight aria-hidden className="size-4" />
+              </Link>
+            }
+          >
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              {insights.slice(0, 3).map((insight) => (
+                <InsightCard key={insight.id} insight={insight} compact />
+              ))}
+            </div>
+          </Section>
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
           <Section style={SECTION_DELAY} title="Income vs expenses" subtitle={data.trend.length === 1 ? 'This month' : `Last ${data.trend.length} months`} className="lg:col-span-3">

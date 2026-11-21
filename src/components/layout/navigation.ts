@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Repeat,
   Settings,
+  Sparkles,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
@@ -52,6 +53,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     description: 'Spending by category, trends and month-over-month comparisons.',
     icon: BarChart3,
     stage: 5,
+  },
+  {
+    path: '/insights',
+    label: 'Insights',
+    description: 'Plain-English findings about your money, each with its calculation.',
+    icon: Sparkles,
+    stage: 9,
   },
   {
     path: '/reports',

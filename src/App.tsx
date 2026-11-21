@@ -4,6 +4,7 @@ import { AppShell } from './components/layout/AppShell'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { NAV_ITEMS } from './components/layout/navigation'
 import { DashboardPage } from './pages/DashboardPage'
+import { InsightsPage } from './pages/InsightsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { ReportsPage } from './pages/ReportsPage'
@@ -18,6 +19,7 @@ const PAGES: Record<string, ReactNode> = {
   '/upload': <UploadPage />,
   '/transactions': <TransactionsPage />,
   '/analytics': <AnalyticsPage />,
+  '/insights': <InsightsPage />,
   '/reports': <ReportsPage />,
   '/subscriptions': <SubscriptionsPage />,
   '/wealth': <WealthPage />,
