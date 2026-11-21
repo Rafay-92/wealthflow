@@ -1,13 +1,19 @@
+import type { ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { AppShell } from './components/layout/AppShell'
 import { NAV_ITEMS } from './components/layout/navigation'
+import { DashboardPage } from './pages/DashboardPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 
+/** Pages that have been built. Any route not listed here shows its placeholder. */
+const PAGES: Record<string, ReactNode> = {
+  '/': <DashboardPage />,
+}
+
 /**
  * Maps URLs to pages. Every route is nested inside <AppShell>, so they all
- * share the sidebar. As each stage is built, its placeholder is replaced
- * with the real page component.
+ * share the sidebar.
  */
 export default function App() {
   return (
@@ -17,7 +23,7 @@ export default function App() {
           <Route
             key={item.path}
             path={item.path}
-            element={<PlaceholderPage item={item} />}
+            element={PAGES[item.path] ?? <PlaceholderPage item={item} />}
           />
         ))}
         <Route path="*" element={<NotFoundPage />} />

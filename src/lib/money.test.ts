@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCents, formatPercent, parseAmountToCents, percentOf, sumCents } from './money'
+import { formatCents, formatCentsCompact, formatPercent, parseAmountToCents, percentOf, sumCents } from './money'
 
 describe('parseAmountToCents', () => {
   it.each([
@@ -70,6 +70,15 @@ describe('formatCents', () => {
 
   it('throws on non-integer input, catching bugs early', () => {
     expect(() => formatCents(12.34)).toThrow(TypeError)
+  })
+})
+
+describe('formatCentsCompact', () => {
+  it('abbreviates for chart axes', () => {
+    expect(formatCentsCompact(0)).toBe('$0')
+    expect(formatCentsCompact(50000)).toBe('$500')
+    expect(formatCentsCompact(523400)).toBe('$5.2K')
+    expect(formatCentsCompact(-250000)).toBe('-$2.5K')
   })
 })
 

@@ -110,6 +110,20 @@ export function formatCents(cents: Cents, options: FormatOptions = {}): string {
   return formatted
 }
 
+const usdCompactFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  notation: 'compact',
+  maximumFractionDigits: 1,
+})
+
+/** Short form for chart axes: 523400 -> "$5.2K". */
+export function formatCentsCompact(cents: Cents): string {
+  assertCents(cents, 'formatCentsCompact')
+  const formatted = usdCompactFormatter.format(Math.abs(cents) / 100)
+  return cents < 0 ? `-${formatted}` : formatted
+}
+
 /** Exact sum of a list of cent amounts. Throws if any value isn't integer cents. */
 export function sumCents(values: readonly Cents[]): Cents {
   let total = 0
