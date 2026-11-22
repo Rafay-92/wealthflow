@@ -1,5 +1,5 @@
 import type { ColumnMapping, DraftStatus, DraftTransaction, RowError } from '../../types/import'
-import type { Category, Transaction } from '../../types/transaction'
+import type { Category, DeletedTransaction, Transaction } from '../../types/transaction'
 import type { ISODate } from '../dates'
 import type { Cents } from '../money'
 import { classifyDrafts } from './duplicates'
@@ -26,11 +26,12 @@ export function prepareImport(
   mapping: ColumnMapping,
   existing: readonly Transaction[],
   accountId: string,
+  deleted: readonly DeletedTransaction[] = [],
 ): PreparedImport {
   const dataRows = allRows.slice(headerRow + 1)
   // +2: one because file lines are 1-based, one to skip the header itself.
   const { drafts, errors } = normalizeRows(dataRows, mapping, headerRow + 2)
-  const statuses = classifyDrafts(drafts, existing, accountId)
+  const statuses = classifyDrafts(drafts, existing, accountId, deleted)
   return {
     rows: drafts.map((draft, i) => ({ draft, status: statuses[i]! })),
     errors,
@@ -38,9 +39,9 @@ export function prepareImport(
   }
 }
 
-/** Default selection: import everything except rows already imported before. */
+/** Default selection: import everything except rows already imported, or deleted by you, before. */
 export function isSelectedByDefault(status: DraftStatus): boolean {
-  return status !== 'duplicate'
+  return status !== 'duplicate' && status !== 'deleted'
 }
 
 /**

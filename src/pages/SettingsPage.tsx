@@ -37,6 +37,9 @@ export function SettingsPage() {
     subscriptionDecisions: state.subscriptionDecisions,
     wealthItems: state.wealthItems,
     wealthEntries: state.wealthEntries,
+    balancePoints: state.balancePoints,
+    deletedTransactions: state.deletedTransactions,
+    budgets: state.budgets,
   }
   const counts = summarizeData(data)
 
@@ -99,6 +102,8 @@ export function SettingsPage() {
     ['Subscription decisions', counts.subscriptionDecisions],
     ['Wealth items', counts.wealthItems],
     ['Wealth value records', counts.wealthEntries],
+    ['Bank balances you entered', counts.balancePoints],
+    ['Budgets', counts.budgets],
   ]
 
   return (

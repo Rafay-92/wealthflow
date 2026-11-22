@@ -12,13 +12,16 @@ const empty: StoredData = {
   subscriptionDecisions: [],
   wealthItems: [],
   wealthEntries: [],
+  balancePoints: [],
+  deletedTransactions: [],
+  budgets: [],
 }
 
 describe('createBackup', () => {
   it('includes every table plus a header, and survives a JSON round trip', () => {
     const data: StoredData = { ...empty, transactions: [tx({ id: 'a' })], accounts: [{ id: 'chk', name: 'Checking', type: 'checking' }] }
     const backup = createBackup(data, new Date('2026-11-21T10:00:00Z'))
-    expect(backup).toMatchObject({ app: 'WealthFlow', formatVersion: 1, exportedAt: '2026-11-21T10:00:00.000Z' })
+    expect(backup).toMatchObject({ app: 'WealthFlow', formatVersion: 4, exportedAt: '2026-11-21T10:00:00.000Z' })
     for (const key of Object.keys(empty)) expect(backup).toHaveProperty(key)
     expect(JSON.parse(JSON.stringify(backup))).toEqual(backup)
   })
@@ -57,8 +60,18 @@ describe('parseBackup', () => {
     ['an unknown category', () => broken((b) => ((b.transactions as { category: string }[])[0]!.category = 'Yachts')), /unknown category/],
     ['an unknown wealth type', () => broken((b) => ((b.wealthItems as { type: string }[])[0]!.type = 'gold-bars')), /Wealth item 1/],
     ['duplicate transactions', () => broken((b) => (b.transactions = [...(b.transactions as unknown[]), ...(b.transactions as unknown[])])), /duplicate/],
+    ['a damaged balance', () => broken((b) => (b.balancePoints = [{ id: 'x', accountId: 'chk', date: 'October', amount: 1.5 }])), /Balance 1/],
   ])('refuses %s with a clear reason', (_label, run, message) => {
     expect(run()).toMatch(message)
+  })
+
+  it('still restores a backup made before monthly balances existed (version 1)', () => {
+    const old = JSON.parse(text(good)) as Record<string, unknown>
+    old.formatVersion = 1
+    delete old.balancePoints
+    const parsed = parseBackup(text(old))
+    expect(typeof parsed).not.toBe('string')
+    expect((parsed as Backup).balancePoints).toEqual([])
   })
 })
 
@@ -73,5 +86,38 @@ describe('summarizeData', () => {
     expect(summarizeData(empty).isEmpty).toBe(true)
     const s = summarizeData({ ...empty, transactions: [tx(), tx()], rules: [{ id: 'r', keyword: 'X', category: 'Other', createdAt: '' }] })
     expect(s).toMatchObject({ transactions: 2, rules: 1, isEmpty: false })
+  })
+})
+
+describe('backup formats 3 and 4', () => {
+  const good = (extra: Partial<StoredData>) => JSON.stringify(createBackup({ ...empty, ...extra }))
+
+  it('converts a version-3 backup’s monthly balances into dated balances', () => {
+    const v3 = { ...createBackup(empty), formatVersion: 3, monthlyBalances: [{ id: 'chk:2026-10', accountId: 'chk', month: '2026-10', opening: 351240, actualClosing: 538183, updatedAt: '' }] } as Record<string, unknown>
+    delete v3.balancePoints
+    const result = parseBackup(JSON.stringify(v3)) as Backup
+    expect(result.balancePoints.map((p) => [p.date, p.amount]).sort()).toEqual([['2026-10-01', 351240], ['2026-11-01', 538183]])
+  })
+
+  it('restores balances, budgets and deleted-transaction records', () => {
+    const data = {
+      balancePoints: [{ id: 'chk:2026-11-22', accountId: 'chk', date: '2026-11-22', amount: 500000, updatedAt: '2026-11-21' }],
+      budgets: [{ category: 'Groceries' as const, amount: 60000, updatedAt: '2026-11-21' }],
+      deletedTransactions: [{ id: 'x', accountId: 'chk', importId: 'imp1', importKey: 'chk|2026-10-01|-450|STARBUCKS', deletedAt: '2026-11-21' }],
+    }
+    const result = parseBackup(good(data))
+    expect(typeof result).not.toBe('string')
+    expect(backupData(result as Backup)).toMatchObject(data)
+  })
+
+  it('restores a version-2 backup, with no budgets or deleted records', () => {
+    const { budgets: _b, deletedTransactions: _d, balancePoints: _p, ...v2 } = createBackup(empty)
+    const result = parseBackup(JSON.stringify({ ...v2, monthlyBalances: [], formatVersion: 2 }))
+    expect(result).toMatchObject({ budgets: [], deletedTransactions: [] })
+  })
+
+  it('refuses a budget that is zero, negative or for an unknown category', () => {
+    expect(parseBackup(good({ budgets: [{ category: 'Groceries', amount: -5, updatedAt: '' }] }))).toMatch(/Budget 1/)
+    expect(parseBackup(good({ budgets: [{ category: 'Nope' as never, amount: 500, updatedAt: '' }] }))).toMatch(/Budget 1/)
   })
 })

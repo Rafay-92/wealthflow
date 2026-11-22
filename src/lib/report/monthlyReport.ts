@@ -1,7 +1,12 @@
+import type { Account } from '../../types/account'
+import type { BalancePoint } from '../../types/balance'
 import type { Transaction } from '../../types/transaction'
+import { isBankAccount, reconcileAccount, type AccountReconciliation } from '../balances/reconcile'
+import { monthsWithin } from '../analytics/dashboard'
+import { resolvePeriod, type PeriodSelection } from '../analytics/reportPeriod'
 import { compareCategories, largestExpenses, type CategoryChange, type MonthlyWithRate } from '../analytics/analytics'
 import { spendingByCategory, type CategoryTotal } from '../analytics/byCategory'
-import { comparisonPeriods, type MonthComparison, type Period } from '../analytics/periods'
+import { isInPeriod, type MonthComparison, type Period } from '../analytics/periods'
 import { summarize, type PeriodSummary } from '../analytics/summary'
 import { monthlyTotals } from '../analytics/trends'
 import { formatDay, formatMonth, monthsEndingAt, toMonthKey, type ISODate, type MonthKey } from '../dates'
@@ -14,7 +19,18 @@ export interface Observation {
 }
 
 export interface MonthlyReport {
+  /** A calendar month, or a custom period you chose. */
+  kind: 'month' | 'custom'
+  /** "Monthly report" or "Custom period report". */
+  title: string
+  /** "October 2026", "November 2026 · month to date (Nov 1–20)" or "Nov 22 – Dec 22, 2026 · 31 days". */
+  subtitle: string
+  /** The calendar month; for a custom period, the month it ends in. */
   month: MonthKey
+  /** Every transaction in the period, transfers included. */
+  transactionCount: number
+  /** Recurring payments are detected per calendar month, so only monthly reports list them. */
+  recurringAvailable: boolean
   comparison: MonthComparison
   /** e.g. "Nov 1–20" or "November 2026". */
   periodLabel: string
@@ -27,9 +43,11 @@ export interface MonthlyReport {
   biggestExpenses: Transaction[]
   recurring: RecurringPayment[]
   recurringTotal: Cents
-  /** This month and up to two before it. */
+  /** Monthly: this month and up to two before it. Custom: each month in the period, counting only days inside it. */
   history: MonthlyWithRate[]
   observations: Observation[]
+  /** Balance check for bank accounts that have an opening balance. */
+  balanceChecks: AccountReconciliation[]
 }
 
 /** A category change is only worth mentioning if it's at least this big… */
@@ -41,43 +59,74 @@ function rangeLabel({ start, end }: Period, wholeMonth: boolean): string {
   return wholeMonth ? formatMonth(toMonthKey(start)) : `${formatDay(start)}–${Number(end.slice(8))}`
 }
 
-/**
- * Builds everything in a monthly report. Both the on-screen report and the
- * PDF render this one object, so they can never disagree.
- */
-export function buildMonthlyReport(transactions: readonly Transaction[], month: MonthKey, latestDate: ISODate | null): MonthlyReport {
-  const comparison = comparisonPeriods(month, latestDate)
-  const summary = summarize(transactions, comparison.current)
-  const prev = summarize(transactions, comparison.previous)
-  const previous = prev.transactionCount > 0 ? prev : null
-  const recurring = detectRecurring(transactions, month)
-  const earliest = transactions.reduce<string | null>((min, t) => (min === null || t.date < min ? t.date : min), null)
+/** A calendar month's report (kept for callers that only deal in months). */
+export function buildMonthlyReport(
+  transactions: readonly Transaction[],
+  month: MonthKey,
+  latestDate: ISODate | null,
+  accounts: readonly Account[] = [],
+  points: readonly BalancePoint[] = [],
+): MonthlyReport {
+  return buildReport(transactions, { kind: 'month', month }, latestDate, accounts, points)
+}
 
-  const report: Omit<MonthlyReport, 'observations'> = {
-    month,
+/**
+ * Builds everything in a report, for a calendar month or a custom period.
+ * Both the on-screen report and the PDF render this one object, so they can
+ * never disagree. Both modes use the same calculations; only the dates differ.
+ */
+export function buildReport(
+  transactions: readonly Transaction[],
+  selection: PeriodSelection,
+  latestDate: ISODate | null,
+  accounts: readonly Account[] = [],
+  points: readonly BalancePoint[] = [],
+): MonthlyReport {
+  const period = resolvePeriod(selection, latestDate)
+  const comparison: MonthComparison = { month: period.month ?? toMonthKey(period.current.end), current: period.current, previous: period.previous, isPartial: period.isPartial }
+  const summary = summarize(transactions, period.current)
+  const prev = summarize(transactions, period.previous)
+  const previous = prev.transactionCount > 0 ? prev : null
+  const isMonth = period.kind === 'month'
+  const recurring = isMonth ? detectRecurring(transactions, period.month!) : []
+  const earliest = transactions.reduce<string | null>((min, t) => (min === null || t.date < min ? t.date : min), null)
+  const withRate = (m: { month: string; income: number; expenses: number; net: number }) => ({ ...m, savingsRate: m.income > 0 ? percentOf(m.net, m.income) : null })
+
+  const report: Omit<MonthlyReport, 'observations' | 'balanceChecks'> = {
+    kind: period.kind,
+    title: isMonth ? 'Monthly report' : 'Custom period report',
+    subtitle: isMonth
+      ? `${formatMonth(period.month!)}${period.isPartial ? ` · month to date (${period.label})` : ''}`
+      : `${period.label} · ${period.days} ${period.days === 1 ? 'day' : 'days'}${period.isPartial ? ' (your data stops here)' : ''}`,
+    month: comparison.month,
+    transactionCount: transactions.filter((t) => isInPeriod(t.date, period.current)).length,
+    recurringAvailable: isMonth,
     comparison,
-    periodLabel: rangeLabel(comparison.current, !comparison.isPartial),
-    previousLabel: rangeLabel(comparison.previous, !comparison.isPartial),
+    periodLabel: isMonth ? rangeLabel(period.current, !period.isPartial) : period.label,
+    previousLabel: isMonth ? rangeLabel(period.previous, !period.isPartial) : `the previous ${period.days} days (${period.previousLabel})`,
     summary,
     previous,
-    categories: spendingByCategory(transactions, comparison.current),
-    categoryChanges: previous ? compareCategories(transactions, comparison.current, comparison.previous) : [],
-    biggestExpenses: largestExpenses(transactions, comparison.current, 5),
+    categories: spendingByCategory(transactions, period.current),
+    categoryChanges: previous ? compareCategories(transactions, period.current, period.previous) : [],
+    biggestExpenses: largestExpenses(transactions, period.current, 5),
     recurring,
     recurringTotal: sumCents(recurring.map((r) => r.amount)),
-    history: monthlyTotals(
-      transactions,
-      monthsEndingAt(month, 3).filter((m) => !earliest || m >= toMonthKey(earliest)),
-    ).map((m) => ({ ...m, savingsRate: m.income > 0 ? percentOf(m.net, m.income) : null })),
+    history: isMonth
+      ? monthlyTotals(transactions, monthsEndingAt(period.month!, 3).filter((m) => !earliest || m >= toMonthKey(earliest))).map(withRate)
+      : monthsWithin(period.current).map(({ month, period: p }) => withRate({ month, ...summarize(transactions, p) })),
   }
-  return { ...report, observations: buildObservations(report) }
+  const balanceChecks = accounts
+    .filter(isBankAccount)
+    .map((a) => reconcileAccount(transactions, a, period, points))
+    .filter((r) => r.opening !== null)
+  return { ...report, observations: buildObservations(report), balanceChecks }
 }
 
 /**
  * Plain-English observations, each computed from the report's numbers.
  * Rules, not guesses: if the data doesn't support a statement, it isn't made.
  */
-export function buildObservations(r: Omit<MonthlyReport, 'observations'>): Observation[] {
+export function buildObservations(r: Omit<MonthlyReport, 'observations' | 'balanceChecks'>): Observation[] {
   const out: Observation[] = []
   const { summary, previous } = r
 

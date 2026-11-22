@@ -1,4 +1,7 @@
 import Papa from 'papaparse'
+import { DATE_FORMATS } from '../../types/import'
+import { parseAmountToCents } from '../money'
+import { parseDate } from './dateFormats'
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024 // 5 MB: years of transactions
 export const MAX_ROWS = 50_000
@@ -50,12 +53,29 @@ export function parseCsvText(text: string): string[][] {
   return rows
 }
 
+/** Header row value meaning "this file has no header row; data starts on line 1". */
+export const NO_HEADER = -1
+
+/** True when a row is clearly a transaction, not a header: it has a date AND an amount. */
+function looksLikeData(row: readonly string[]): boolean {
+  const dateCell = row.findIndex((cell) => DATE_FORMATS.some((f) => parseDate(cell, f) !== null))
+  if (dateCell === -1) return false
+  return row.some((cell, i) => i !== dateCell && cell !== '' && (parseAmountToCents(cell) !== null || parseAmountToCents(cell, { decimalComma: true }) !== null))
+}
+
 /**
  * Finds the header row. Many banks put a few lines of account info above the
  * real table, e.g. "Account: ****1234". We look for the first row (within the
  * first 10) that is as wide as the data and mostly text.
+ *
+ * Some banks (TD, CIBC) export NO header at all: the first line is already a
+ * transaction. Then this returns NO_HEADER, so that first transaction isn't
+ * mistaken for column names and lost.
  */
 export function detectHeaderRow(rows: readonly string[][]): number {
+  const firstContent = rows.find((row) => !isBlankRow(row))
+  if (firstContent && looksLikeData(firstContent)) return NO_HEADER
+
   const widthCounts = new Map<number, number>()
   for (const row of rows) {
     if (!isBlankRow(row)) widthCounts.set(row.length, (widthCounts.get(row.length) ?? 0) + 1)
@@ -79,4 +99,16 @@ export function isBlankRow(row: readonly string[]): boolean {
 /** A stable fingerprint of a header row, used to recognise a bank's format next time. */
 export function headerSignature(headers: readonly string[]): string {
   return headers.map((h) => h.trim().toLowerCase()).join('|')
+}
+
+/** Column names to show: the header row's, or "Column 1, Column 2…" when there isn't one. */
+export function columnHeaders(rows: readonly string[][], headerRow: number): string[] {
+  if (headerRow >= 0) return rows[headerRow] ?? []
+  const width = Math.max(0, ...rows.slice(0, 50).map((r) => r.length))
+  return Array.from({ length: width }, (_, i) => `Column ${i + 1}`)
+}
+
+/** Fingerprint of a file's layout, including header-less files (by column count). */
+export function layoutSignature(rows: readonly string[][], headerRow: number): string {
+  return headerRow >= 0 ? headerSignature(rows[headerRow] ?? []) : `no-header:${columnHeaders(rows, headerRow).length}`
 }

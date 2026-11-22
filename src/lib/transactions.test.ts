@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { tx } from '../test/factories'
-import { filterTransactions, NO_FILTERS, transactionsMatchingKeyword } from './transactions'
+import { filterTransactions, merchantNames, NO_FILTERS, sortTransactions, transactionsMatchingKeyword, transactionType } from './transactions'
 
 const data = [
   tx({ id: 'a', date: '2026-10-03', description: 'STARBUCKS #12', category: 'Restaurants', accountId: 'chk', categorySource: 'keyword' }),
@@ -37,5 +37,37 @@ describe('transactionsMatchingKeyword', () => {
 
   it('matches nothing for an empty keyword', () => {
     expect(transactionsMatchingKeyword(data, '  #  ')).toEqual([])
+  })
+})
+
+describe('transaction types, filters and sorting', () => {
+  const list = [
+    tx({ id: 'pay', date: '2026-10-01', amount: 300000, category: 'Income', description: 'ACME PAYROLL' }),
+    tx({ id: 'buy', date: '2026-10-05', amount: -4500, category: 'Shopping', description: 'BLUE HERON GIFTS #12' }),
+    tx({ id: 'ref', date: '2026-10-09', amount: 4500, category: 'Shopping', description: 'RETURN BLUE HERON GIFTS' }),
+    tx({ id: 'tfr', date: '2026-10-10', amount: -90000, category: 'Transfers', description: 'TFR TO SAVINGS' }),
+    tx({ id: 'rev', date: '2026-10-12', amount: -300000, category: 'Income', description: 'ACME PAYROLL REVERSAL' }),
+  ]
+
+  it('classifies each transaction by what it means for your totals', () => {
+    expect(list.map(transactionType)).toEqual(['income', 'expense', 'refund', 'transfer', 'income'])
+  })
+
+  it('filters by type, merchant and date range', () => {
+    expect(ids(filterTransactions(list, { ...NO_FILTERS, type: 'refund' }))).toEqual(['ref'])
+    expect(ids(filterTransactions(list, { ...NO_FILTERS, merchant: 'blue heron' }))).toEqual(['buy', 'ref'])
+    expect(ids(filterTransactions(list, { ...NO_FILTERS, dateFrom: '2026-10-05', dateTo: '2026-10-10' }))).toEqual(['buy', 'ref', 'tfr'])
+  })
+
+  it('sorts by date either way, and by the size of the amount', () => {
+    expect(ids(sortTransactions(list, 'date-asc'))).toEqual(['pay', 'buy', 'ref', 'tfr', 'rev'])
+    expect(ids(sortTransactions(list, 'date-desc'))).toEqual(['rev', 'tfr', 'ref', 'buy', 'pay'])
+    // $3,000 reversal and $3,000 pay are equal in size: newest first.
+    expect(ids(sortTransactions(list, 'amount-desc'))).toEqual(['rev', 'pay', 'tfr', 'ref', 'buy'])
+    expect(ids(sortTransactions(list, 'amount-asc'))[0]).toBe('ref')
+  })
+
+  it('lists merchant names for suggestions', () => {
+    expect(merchantNames(list)).toContain('BLUE HERON')
   })
 })

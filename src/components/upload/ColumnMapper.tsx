@@ -3,7 +3,7 @@ import { useMemo, type ReactNode } from 'react'
 import { DATE_FORMAT_LABELS, detectDateFormat } from '../../lib/csv/dateFormats'
 import { mappingProblems } from '../../lib/csv/detectColumns'
 import { normalizeRows } from '../../lib/csv/normalize'
-import { isBlankRow } from '../../lib/csv/parseCsv'
+import { columnHeaders, isBlankRow, NO_HEADER } from '../../lib/csv/parseCsv'
 import { formatDay } from '../../lib/dates'
 import { formatCents } from '../../lib/money'
 import type { Account, AccountType } from '../../types/account'
@@ -25,6 +25,11 @@ interface ColumnMapperProps {
   remember: boolean
   onRememberChange: (remember: boolean) => void
   usedSavedMapping: boolean
+  /** True when "Flip signs" was ticked by detection rather than by the user. */
+  autoFlipped: boolean
+  manualBalance: string
+  onManualBalanceChange: (value: string) => void
+  manualBalanceError: string | null
   onBack: () => void
   onContinue: () => void
 }
@@ -35,7 +40,7 @@ const fieldClass =
 
 export function ColumnMapper(props: ColumnMapperProps) {
   const { rows, headerRow, mapping, onMappingChange, account } = props
-  const headers = rows[headerRow] ?? []
+  const headers = useMemo(() => columnHeaders(rows, headerRow), [rows, headerRow])
   const dataRows = useMemo(() => rows.slice(headerRow + 1), [rows, headerRow])
   const contentRows = useMemo(() => dataRows.filter((r) => !isBlankRow(r)), [dataRows])
   const set = (patch: Partial<ColumnMapping>) => onMappingChange({ ...mapping, ...patch })
@@ -57,10 +62,18 @@ export function ColumnMapper(props: ColumnMapperProps) {
     return { drafts: drafts.slice(0, PREVIEW_ROWS), errors: errors.slice(0, 3) }
   }, [dataRows, mapping, headerRow, problems.length])
 
+  // Count money in vs out across the WHOLE file, so a sign problem can't hide below the preview.
+  const signCheck = useMemo(() => {
+    if (problems.length > 0) return null
+    const { drafts } = normalizeRows(dataRows, mapping, headerRow + 2)
+    return { moneyIn: drafts.filter((d) => d.amount > 0).length, moneyOut: drafts.filter((d) => d.amount < 0).length }
+  }, [dataRows, mapping, headerRow, problems.length])
+
   const columnOptions = headers.map((h, i) => ({ value: i, label: h || `Column ${i + 1}` }))
   const roleOf = (i: number): string | null =>
     i === mapping.dateColumn ? 'Date'
     : i === mapping.descriptionColumn ? 'Description'
+    : i === mapping.typeColumn ? 'Debit/Credit'
     : i === mapping.amountColumn ? 'Amount'
     : i === mapping.debitColumn ? 'Money out'
     : i === mapping.creditColumn ? 'Money in'
@@ -121,6 +134,7 @@ export function ColumnMapper(props: ColumnMapperProps) {
         <Card className="flex flex-col gap-5">
           <Field label="Header row" hint="The row with the column names. Change it if your bank adds lines above the table.">
             <select className={fieldClass} value={headerRow} onChange={(e) => props.onHeaderRowChange(Number(e.target.value))}>
+              <option value={NO_HEADER}>No header row (transactions start on row 1)</option>
               {rows.slice(0, 10).map((row, i) => (
                 <option key={i} value={i}>
                   Row {i + 1}: {row.slice(0, 3).join(', ').slice(0, 50)}
@@ -165,9 +179,14 @@ export function ColumnMapper(props: ColumnMapperProps) {
           </fieldset>
 
           {mapping.amountMode === 'single' ? (
-            <Field label="Amount">
-              <ColumnSelect value={mapping.amountColumn} options={columnOptions} onChange={(v) => set({ amountColumn: v })} />
-            </Field>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="Amount">
+                <ColumnSelect value={mapping.amountColumn} options={columnOptions} onChange={(v) => set({ amountColumn: v })} />
+              </Field>
+              <Field label="Debit / Credit column" hint="If your bank writes “Debit” or “Credit” next to every amount (e.g. Scotiabank).">
+                <ColumnSelect value={mapping.typeColumn ?? null} options={columnOptions} onChange={(v) => set({ typeColumn: v, invertAmounts: v === null ? mapping.invertAmounts : false })} optional />
+              </Field>
+            </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <Field label="Money out (debit)">
@@ -179,9 +198,26 @@ export function ColumnMapper(props: ColumnMapperProps) {
             </div>
           )}
 
-          <Field label="Balance" hint="Optional. If present, we'll show the account's latest balance.">
+          <Field label="Balance column" hint="Optional. If present, we'll show the account's latest balance.">
             <ColumnSelect value={mapping.balanceColumn} options={columnOptions} onChange={(v) => set({ balanceColumn: v })} optional />
           </Field>
+
+          {mapping.balanceColumn === null && (
+            <Field
+              label="Balance today (optional)"
+              hint="This file has no balance column. Type your account balance as of the last transaction to show it on the Dashboard."
+            >
+              <input
+                className={fieldClass}
+                inputMode="decimal"
+                placeholder="e.g. 4,218.36"
+                value={props.manualBalance}
+                onChange={(e) => props.onManualBalanceChange(e.target.value)}
+                aria-invalid={Boolean(props.manualBalanceError)}
+              />
+              {props.manualBalanceError && <span className="mt-1 block text-xs text-negative">{props.manualBalanceError}</span>}
+            </Field>
+          )}
 
           <Field label="Number format" hint="French-language exports (e.g. from Quebec banks) use a comma for cents.">
             <select
@@ -201,6 +237,13 @@ export function ColumnMapper(props: ColumnMapperProps) {
               <span className="block text-xs text-ink-faint">Tick this if purchases show as positive numbers (common in credit card exports).</span>
             </span>
           </label>
+          {mapping.invertAmounts && props.autoFlipped && (
+            <p className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2.5 text-xs text-warning">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+              Ticked automatically: almost every amount in this file is positive, which usually means purchases are listed as
+              positive. Check the preview: spending should show with a minus sign.
+            </p>
+          )}
         </Card>
 
         <div className="flex flex-col gap-6">
@@ -218,6 +261,18 @@ export function ColumnMapper(props: ColumnMapperProps) {
           <Card>
             <h3 className="font-medium">How it will be read</h3>
             <p className="mb-3 text-xs text-ink-faint">Check the dates and that spending shows as negative.</p>
+            {signCheck && (
+              <p className="mb-3 text-xs text-ink-muted tabular">
+                Whole file: <span className="text-ink">{signCheck.moneyOut}</span> money out (−) · <span className="text-positive">{signCheck.moneyIn}</span> money in (+)
+              </p>
+            )}
+            {signCheck && signCheck.moneyOut === 0 && signCheck.moneyIn > 1 && (
+              <p role="alert" className="mb-3 flex items-start gap-2 rounded-lg border border-negative/40 bg-negative-soft px-3 py-2.5 text-xs text-negative">
+                <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+                Every transaction is being read as money IN, so your spending would count as income. If your bank writes “Debit” /
+                “Credit” in a column, choose it under “Debit / Credit column”. Otherwise tick “Flip signs”.
+              </p>
+            )}
             {preview ? (
               <ul className="divide-y divide-navy-600/40 text-sm">
                 {preview.drafts.map((d) => (
@@ -250,7 +305,7 @@ export function ColumnMapper(props: ColumnMapperProps) {
         </Button>
         <div className="flex items-center gap-3">
           {accountProblem && problems.length === 0 && <span className="text-sm text-ink-faint">{accountProblem}</span>}
-          <Button variant="primary" onClick={props.onContinue} disabled={problems.length > 0 || accountProblem !== null}>
+          <Button variant="primary" onClick={props.onContinue} disabled={problems.length > 0 || accountProblem !== null || props.manualBalanceError !== null}>
             Review transactions <ArrowRight aria-hidden className="size-4" />
           </Button>
         </div>

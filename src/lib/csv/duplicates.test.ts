@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { tx } from '../../test/factories'
 import type { DraftTransaction } from '../../types/import'
-import { classifyDrafts } from './duplicates'
+import { classifyDrafts, duplicateKey } from './duplicates'
 
 const draft = (description: string, amount = -450, date = '2026-11-03'): DraftTransaction => ({
   rowNumber: 0,
@@ -47,5 +47,32 @@ describe('classifyDrafts', () => {
       'new',
       'new',
     ])
+  })
+})
+
+describe('duplicate protection after editing or deleting', () => {
+  const draft = (description: string, amount = -450, date = '2026-11-03') => ({ rowNumber: 2, date, description, amount, balance: null })
+
+  it('still recognises an imported transaction after you edit it', () => {
+    // Imported as -4.50 STARBUCKS, then edited to -5.00 "Coffee with Sam".
+    const edited = tx({
+      accountId: 'chk',
+      importId: 'imp1',
+      date: '2026-11-03',
+      amount: -500,
+      description: 'Coffee with Sam',
+      importKey: duplicateKey('chk', { date: '2026-11-03', amount: -450, description: 'STARBUCKS' }),
+    })
+    expect(classifyDrafts([draft('STARBUCKS')], [edited], 'chk')).toEqual(['duplicate'])
+  })
+
+  it('does not bring back a transaction you deleted', () => {
+    const deleted = [{ id: 'x', accountId: 'chk', importId: 'imp1', importKey: duplicateKey('chk', draft('STARBUCKS')), deletedAt: '2026-11-21' }]
+    expect(classifyDrafts([draft('STARBUCKS'), draft('STARBUCKS')], [], 'chk', deleted)).toEqual(['deleted', 'new'])
+  })
+
+  it('treats an exact match of a transaction you added by hand as a duplicate', () => {
+    const manual = tx({ accountId: 'chk', date: '2026-11-03', amount: -450, description: 'STARBUCKS' })
+    expect(classifyDrafts([draft('STARBUCKS')], [manual], 'chk')).toEqual(['duplicate'])
   })
 })

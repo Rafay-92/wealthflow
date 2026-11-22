@@ -1,4 +1,5 @@
 import type { Cents } from '../lib/money'
+import type { AccountType } from './account'
 
 /**
  * The categories WealthFlow understands. Declared `as const` so TypeScript
@@ -16,6 +17,7 @@ export const CATEGORIES = [
   'Utilities',
   'Education',
   'Healthcare',
+  'E-Transfers',
   'Transfers',
   'Income',
   'Other',
@@ -48,8 +50,26 @@ export interface Transaction {
   categoryNote?: string
   /** Which account this came from, used to detect transfers between accounts. */
   accountId?: string
-  /** The import batch it arrived in, so a whole import can be undone. */
+  /** The import batch it arrived in, so a whole import can be undone. Missing on transactions you added by hand. */
   importId?: string
+  /**
+   * The bank's original values (account, date, amount, description), frozen the
+   * first time you edit an imported transaction. Re-importing an overlapping
+   * statement still recognises the row as already imported, even after your edit.
+   */
+  importKey?: string
+}
+
+/**
+ * Remembers an imported transaction you deleted, so importing an overlapping
+ * statement doesn't quietly bring it back. Undoing the whole import clears these.
+ */
+export interface DeletedTransaction {
+  id: string
+  accountId: string
+  importId: string
+  importKey: string
+  deletedAt: string
 }
 
 /** "Always put transactions containing <keyword> in <category>." */
@@ -59,4 +79,16 @@ export interface CategoryRule {
   keyword: string
   category: Category
   createdAt: string
+}
+
+/** A transaction as typed into the add/edit form, ready to save. */
+export interface TransactionInput {
+  date: string
+  description: string
+  /** Signed cents: negative = money out. */
+  amount: Cents
+  /** 'auto' lets WealthFlow categorise it (and keep doing so as rules change). */
+  category: Category | 'auto'
+  /** An existing account, or a new one to create. */
+  account: { id: string } | { name: string; type: AccountType }
 }

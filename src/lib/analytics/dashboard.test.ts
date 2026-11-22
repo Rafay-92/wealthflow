@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { tx } from '../../test/factories'
 import type { Account } from '../../types/account'
-import { totalBalance } from './balance'
+import { accountBalances, sumBalances, totalBalance } from './balance'
 import { buildDashboard } from './dashboard'
 import { monthlyTotals } from './trends'
 
@@ -78,5 +78,46 @@ describe('buildDashboard', () => {
     expect(data.trend.map((m) => m.month)).toEqual([
       '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11',
     ])
+  })
+})
+
+describe('accountBalances (live)', () => {
+  const chk: Account = { id: 'chk', name: 'Chequing', type: 'checking', balance: 150000, balanceAsOf: '2026-10-31' }
+
+  it('adds transactions dated after the bank’s balance, and only those', () => {
+    const list = [
+      tx({ accountId: 'chk', date: '2026-10-31', amount: -2000 }), // already inside the bank's figure
+      tx({ accountId: 'chk', date: '2026-11-02', amount: -4550 }), // added by hand afterwards
+      tx({ accountId: 'chk', date: '2026-11-03', amount: 10000 }),
+      tx({ accountId: 'sav', date: '2026-11-03', amount: -99999 }), // another account
+    ]
+    const [b] = accountBalances([chk], list)
+    expect(b).toMatchObject({ balance: 150000 - 4550 + 10000, basis: 'bank', sinceCount: 2, asOf: '2026-11-03' })
+  })
+
+  it('moves immediately when a transaction is edited or deleted', () => {
+    const t = tx({ accountId: 'chk', date: '2026-11-02', amount: -4550 })
+    expect(accountBalances([chk], [t])[0]!.balance).toBe(145450)
+    expect(accountBalances([chk], [{ ...t, amount: -5000 }])[0]!.balance).toBe(145000)
+    expect(accountBalances([chk], [])[0]!.balance).toBe(150000)
+  })
+
+  it('uses an opening balance you entered when it is more recent than the bank’s', () => {
+    const balances = [{ id: 'chk:2026-11-01', accountId: 'chk', date: '2026-11-01', amount: 200000, updatedAt: '' }]
+    const [b] = accountBalances([chk], [tx({ accountId: 'chk', date: '2026-11-01', amount: -1000 })], balances)
+    expect(b).toMatchObject({ balance: 199000, basis: 'user' })
+  })
+
+  it('leaves out accounts with no known balance instead of guessing', () => {
+    expect(accountBalances([{ id: 'x', name: 'Card', type: 'credit' }], [tx({ accountId: 'x' })])).toEqual([])
+    expect(sumBalances([])).toBeNull()
+  })
+
+  it('the opening balance is never counted as income', () => {
+    const balances = [{ id: 'chk:2026-11-01', accountId: 'chk', date: '2026-11-01', amount: 200000, updatedAt: '' }]
+    const list = [tx({ accountId: 'chk', date: '2026-11-05', amount: -1000, category: 'Shopping' })]
+    const d = buildDashboard(list, [chk], '2026-11', balances)
+    expect(d.current.income).toBe(0)
+    expect(d.balance?.total).toBe(199000)
   })
 })

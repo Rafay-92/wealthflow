@@ -11,6 +11,7 @@ import { moneyChange, pointsChange, type Change } from '../analytics/change'
 import { formatDay, formatMonth } from '../dates'
 import { formatCents, formatPercent } from '../money'
 import type { MonthlyReport, Observation } from './monthlyReport'
+import { OPENING_SOURCE_LABEL } from '../balances/reconcile'
 
 type RGB = [number, number, number]
 
@@ -68,10 +69,10 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
   doc.rect(PAGE_MARGIN, 30, 4, 34, 'F')
   doc.setFont('helvetica', 'bold').setFontSize(20)
   doc.setTextColor(255, 255, 255)
-  text('Monthly report', PAGE_MARGIN + 14, 48)
+  text(report.title, PAGE_MARGIN + 14, 48)
   doc.setFont('helvetica', 'normal').setFontSize(11)
   doc.setTextColor(190, 200, 220)
-  text(`${formatMonth(report.month)}${report.comparison.isPartial ? ` · month to date (${report.periodLabel})` : ''}`, PAGE_MARGIN + 14, 66)
+  text(`${report.subtitle} · ${report.transactionCount} transactions`, PAGE_MARGIN + 14, 66)
   doc.setFontSize(9)
   text('WealthFlow', width - PAGE_MARGIN, 44, { align: 'right' })
   text(`Generated ${options.generatedAt.toLocaleDateString('en-CA', { dateStyle: 'medium' })}`, width - PAGE_MARGIN, 58, { align: 'right' })
@@ -91,7 +92,7 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
     { label: 'Saved', value: formatCents(summary.net), change: changeText(previous && moneyChange(summary.net, previous.net, true), 'percent', against) },
     {
       label: 'Savings rate',
-      value: formatPercent(summary.savingsRate),
+      value: formatPercent(summary.savingsRate, 2),
       change: changeText(previous && pointsChange(summary.savingsRate, previous.savingsRate, true), 'points', against),
     },
   ]
@@ -216,7 +217,7 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
   y = lastY() + 28
 
   // ---- Recurring payments -----------------------------------------------------
-  heading('Recurring payments', 'Charged once a month, at a similar amount')
+  heading('Recurring payments', report.recurringAvailable ? 'Charged once a month, at a similar amount' : 'Detected per calendar month: choose a month to see them')
   if (report.recurring.length > 0) {
     autoTable(doc, {
       ...tableDefaults,
@@ -235,8 +236,32 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
     y += 28
   }
 
+  // ---- Balance check (bank accounts with an opening balance) ------------------
+  if (report.balanceChecks.length > 0) {
+    heading('Balance check', 'Opening + income − expenses ± transfers = expected closing. Only user-provided openings are verified.')
+    autoTable(doc, {
+      ...tableDefaults,
+      startY: y,
+      head: [['Account', 'Opening source', num('Opening'), num('Income'), num('Expenses'), num('Transfers'), num('Expected'), num('Actual'), num('Difference')]],
+      body: report.balanceChecks.map((r) => [
+        r.accountName,
+        OPENING_SOURCE_LABEL[r.openingSource!],
+        formatCents(r.opening!),
+        formatCents(r.income),
+        formatCents(r.expenses),
+        formatCents(r.transfersIn - r.transfersOut),
+        formatCents(r.expectedClosing!),
+        r.actualClosing === null ? '-' : formatCents(r.actualClosing),
+        r.difference === null ? '-' : !r.verified ? `${formatCents(r.difference, { signed: true })} (not verified)` : r.difference === 0 ? 'Balanced' : formatCents(r.difference, { signed: true }),
+      ]),
+      styles: { ...tableDefaults.styles, fontSize: 8 },
+      columnStyles: { 1: { cellWidth: 70 }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
+    })
+    y = lastY() + 28
+  }
+
   // ---- Recent months --------------------------------------------------------
-  heading('Recent months')
+  heading(report.kind === 'month' ? 'Recent months' : 'Months in this period', report.kind === 'month' ? undefined : 'Only days inside your period are counted')
   autoTable(doc, {
     ...tableDefaults,
     startY: y,
@@ -268,5 +293,5 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
 
 /** Builds the PDF and starts the browser's download. */
 export function downloadReportPdf(report: MonthlyReport, options: PdfOptions): void {
-  createReportPdf(report, options).save(`wealthflow-report-${report.month}.pdf`)
+  createReportPdf(report, options).save(`wealthflow-report-${report.kind === 'month' ? report.month : `${report.comparison.current.start}-to-${report.comparison.current.end}`}.pdf`)
 }

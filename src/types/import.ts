@@ -33,6 +33,12 @@ export interface ColumnMapping {
    * before CAD support don't have it; missing means false.
    */
   decimalComma?: boolean
+  /**
+   * A column saying whether each row is money out or in ("Debit"/"Credit",
+   * "DR"/"CR", "Withdrawal"/"Deposit"), used when the amounts themselves are
+   * all positive (e.g. Scotiabank). Optional for mappings saved earlier.
+   */
+  typeColumn?: number | null
 }
 
 /** A CSV row successfully turned into transaction data, before it's saved. */
@@ -55,8 +61,9 @@ export interface RowError {
  * duplicate  - already imported earlier; skipped by default
  * repeat     - identical to another row in this same file; imported by default,
  *              because two $4.50 coffees on the same day can both be real
+ * deleted    - imported before, then deleted by you; skipped by default
  */
-export type DraftStatus = 'new' | 'duplicate' | 'repeat'
+export type DraftStatus = 'new' | 'duplicate' | 'repeat' | 'deleted'
 
 /** A mapping remembered for a bank's file layout, so you only set it up once. */
 export interface SavedMapping {

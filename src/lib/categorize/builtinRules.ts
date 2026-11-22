@@ -37,7 +37,7 @@ export const BUILTIN_KEYWORDS: KeywordGroup[] = [
   },
   {
     category: 'Shopping',
-    keywords: ['AMAZON', 'AMZN', 'TARGET', 'WALMART', 'BEST BUY', 'EBAY', 'ETSY', 'IKEA', 'HOME DEPOT', "LOWE'S", 'LOWES', "MACY'S", 'NORDSTROM', 'APPLE STORE', 'NIKE', 'ZARA', 'H&M', 'TJ MAXX', 'MARSHALLS', 'BOOKSHOP', 'BOOKSTORE', 'SEPHORA', 'ULTA', 'CANADIAN TIRE', 'WINNERS', 'HOMESENSE', 'SPORT CHEK', 'DOLLARAMA', "HUDSON'S BAY", 'THE BAY', 'SIMONS', 'INDIGO', 'MEC', 'GIANT TIGER', 'STAPLES', 'LONDON DRUGS', 'MARK S'],
+    keywords: ['AMAZON', 'AMZN', 'ALIBABA', 'ALIEXPRESS', 'TEMU', 'SHEIN', 'TARGET', 'WALMART', 'BEST BUY', 'EBAY', 'ETSY', 'IKEA', 'HOME DEPOT', "LOWE'S", 'LOWES', "MACY'S", 'NORDSTROM', 'APPLE STORE', 'NIKE', 'ZARA', 'H&M', 'TJ MAXX', 'MARSHALLS', 'BOOKSHOP', 'BOOKSTORE', 'SEPHORA', 'ULTA', 'CANADIAN TIRE', 'WINNERS', 'HOMESENSE', 'SPORT CHEK', 'DOLLARAMA', "HUDSON'S BAY", 'THE BAY', 'SIMONS', 'INDIGO', 'MEC', 'GIANT TIGER', 'STAPLES', 'LONDON DRUGS', 'MARK S'],
   },
   {
     category: 'Entertainment',
@@ -83,6 +83,17 @@ export const STRONG_TRANSFER_PHRASES = [
   'PAYMENT THANK YOU',
   'PAYMENT RECEIVED',
   'CREDIT CARD PAYMENT',
+  // Paying a credit card from chequing: the purchases are already counted on the
+  // card itself, so counting the payment too would double-count them.
+  'VISA PAYMENT',
+  'PAYMENT VISA',
+  'MASTERCARD PAYMENT',
+  'PAYMENT MASTERCARD',
+  'AMEX PAYMENT',
+  'AMERICAN EXPRESS PAYMENT',
+  'CREDIT CARD PMT',
+  'CC PAYMENT',
+  'PAYMENT TO CREDIT CARD',
   // Canadian banks' own wording (TD, RBC, CIBC) and French
   'TFR TO',
   'TFR FR',
@@ -112,4 +123,18 @@ export const TRANSFERISH_WORDS = ['TRANSFER', 'XFER', 'PAYMENT', 'PMT', 'AUTOPAY
  * i.e. real spending, not a transfer between your own accounts. These are
  * never treated as transfers automatically.
  */
+/**
+ * Interac e-Transfers and payment apps used to pay PEOPLE. These get their
+ * own "E-Transfers" category, checked before merchant keywords, because
+ * descriptions like "INTERNET BANKING E-TRANSFER" would otherwise match
+ * "INTERNET" (a Utilities keyword). PayPal isn't here: it's mostly shopping.
+ */
+export const E_TRANSFER_PHRASES = ['E TRANSFER', 'ETRANSFER', 'E TFR', 'EMT', 'VIREMENT INTERAC', 'INTERAC TRANSFER', 'ZELLE', 'VENMO', 'CASH APP', 'CASHAPP']
+
 export const PEER_TO_PEER = ['ZELLE', 'VENMO', 'CASH APP', 'CASHAPP', 'PAYPAL', 'E TRANSFER', 'ETRANSFER', 'E TFR', 'EMT', 'VIREMENT INTERAC']
+
+/**
+ * Wording for money coming back: refunds, returns and reversals. A refund
+ * reduces spending; it is never income.
+ */
+export const REFUND_PHRASES = ['REFUND', 'REFUNDED', 'REVERSAL', 'REVERSED', 'REVERSE', 'RETURN', 'RETURNED', 'CREDIT VOUCHER', 'CHARGEBACK', 'MERCHANDISE CREDIT', 'MERCH CREDIT', 'REMBOURSEMENT', 'RETOUR', 'ANNULATION']

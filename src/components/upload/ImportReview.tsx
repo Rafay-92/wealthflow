@@ -30,6 +30,11 @@ const STATUS_BADGES: Record<DraftStatus, { label: string; className: string; exp
     className: 'bg-navy-700 text-ink-muted',
     explain: 'Matches a transaction you imported before (same account, date, amount and description).',
   },
+  deleted: {
+    label: 'Deleted before',
+    className: 'bg-navy-700 text-ink-muted',
+    explain: 'You imported this before and then deleted it, so it’s skipped. Tick it to bring it back.',
+  },
   repeat: {
     label: 'Repeated in file',
     className: 'bg-warning-soft text-warning',
@@ -63,7 +68,7 @@ export function ImportReview(props: ImportReviewProps) {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="New" value={count('new')} />
-        <Stat label="Already imported" value={count('duplicate')} hint="Skipped" />
+        <Stat label="Already imported" value={count('duplicate') + count('deleted')} hint="Skipped" />
         <Stat label="Repeated in file" value={count('repeat')} hint="Kept" />
         <Stat label="Couldn't read" value={prepared.errors.length} hint="Skipped" tone={prepared.errors.length > 0 ? 'bad' : undefined} />
       </div>

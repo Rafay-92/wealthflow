@@ -125,7 +125,7 @@ describe('transfers', () => {
   })
 
   it('does not treat payments to other people as transfers', () => {
-    expect(one(tx({ description: 'ZELLE TRANSFER TO ALEX', amount: -4000 })).category).toBe('Other')
+    expect(one(tx({ description: 'ZELLE TRANSFER TO ALEX', amount: -4000 })).category).toBe('E-Transfers')
     expect(one(tx({ description: 'VENMO PAYMENT', amount: -2500 })).category).not.toBe('Transfers')
   })
 
@@ -140,6 +140,32 @@ describe('transfers', () => {
     expect(one(tx({ description: 'SEND E-TFR ***Xd4 ALEX', amount: -4000 })).category).not.toBe('Transfers')
     expect(one(tx({ description: 'INTERAC E-TRANSFER TO SAM', amount: -2500 })).category).not.toBe('Transfers')
     expect(one(tx({ description: 'VIREMENT INTERAC A MARIE', amount: -3000 })).category).not.toBe('Transfers')
+  })
+
+  it('puts e-transfers in their own category, never Utilities (the reported bug)', () => {
+    // "INTERNET" is a Utilities keyword; it must not win for an e-transfer.
+    expect(one(tx({ description: 'INTERNET BANKING E-TRANSFER 105234 JOHN', amount: -15000 }))).toMatchObject({
+      category: 'E-Transfers',
+      categoryNote: 'E-transfer sent',
+    })
+    expect(one(tx({ description: 'SEND E-TFR ***Xd4', amount: -4000 })).category).toBe('E-Transfers')
+    expect(one(tx({ description: 'Interac e-Transfer To: ROGERS', amount: -9500 })).category).toBe('E-Transfers')
+    expect(one(tx({ description: 'VIREMENT INTERAC A MARIE', amount: -3000 })).category).toBe('E-Transfers')
+  })
+
+  it('counts a received e-transfer as income', () => {
+    expect(one(tx({ description: 'INTERNET BANKING E-TRANSFER DEPOSIT', amount: 25000 }))).toMatchObject({
+      category: 'Income',
+      categoryNote: 'E-transfer received',
+    })
+  })
+
+  it('keeps PayPal shopping as shopping, not an e-transfer', () => {
+    expect(one(tx({ description: 'PAYPAL *EBAY', amount: -4500 })).category).toBe('Shopping')
+  })
+
+  it('lets your own rules override the e-transfer category', () => {
+    expect(one(tx({ description: 'E-TRANSFER SENT LANDLORD', amount: -165000 }), [rule('LANDLORD', 'Housing')]).category).toBe('Housing')
   })
 
   it('lets a merchant win over weak wording like AUTOPAY', () => {
@@ -197,5 +223,48 @@ describe('previewCategories', () => {
       { rowNumber: 3, date: '2026-11-15', description: 'SAFEWAY', amount: -3000, balance: null },
     ]
     expect(previewCategories(drafts, 'chk', saved, [])).toEqual(['Transfers', 'Groceries'])
+  })
+})
+
+describe('refunds, reversals and credit cards', () => {
+  const card = [{ id: 'card', name: 'Visa', type: 'credit' as const }]
+
+  it('a refund from a known merchant reduces that category, it is never income', () => {
+    const r = one(tx({ description: 'REFUND AMAZON.CA', amount: 3412 }))
+    expect(r.category).toBe('Shopping')
+    expect(r.categoryNote).toMatch(/Refund/)
+  })
+
+  it('a refund from an unknown merchant takes the category of the earlier purchase', () => {
+    const purchase = tx({ description: 'BLUE HERON GIFTS #12', amount: -4500, date: '2026-10-02', category: 'Shopping', categorySource: 'manual' })
+    const refund = tx({ description: 'RETURN - BLUE HERON GIFTS', amount: 4500, date: '2026-10-09' })
+    const [, r] = categorizeAll([purchase, refund], [])
+    expect(r!.category).toBe('Shopping')
+  })
+
+  it('an unmatched refund is "Other" (lower spending) and flagged, never income', () => {
+    const r = one(tx({ description: 'MERCHANT REVERSAL 88123', amount: 1999 }))
+    expect(r.category).toBe('Other')
+    expect(r.categorySource).toBe('default')
+  })
+
+  it('a tax refund is still income', () => {
+    expect(one(tx({ description: 'CANADA FED TAX REFUND', amount: 84000 })).category).toBe('Income')
+  })
+
+  it('a reversed paycheque lowers income instead of counting as spending', () => {
+    const r = one(tx({ description: 'PAYROLL REVERSAL ACME', amount: -245000 }))
+    expect(r.category).toBe('Income')
+  })
+
+  it('an unrecognised credit on a credit card is a payment, not income', () => {
+    const [r] = categorizeAll([tx({ description: 'THANK YOU 0001', amount: 50000, accountId: 'card' })], [], card)
+    expect(r!.category).toBe('Transfers')
+    expect(r!.categorySource).toBe('default') // shown under "needs review"
+  })
+
+  it('paying the card from chequing is a transfer even when the card statement is not imported', () => {
+    expect(one(tx({ description: 'TD VISA PAYMENT 4520', amount: -50000, accountId: 'chk' })).category).toBe('Transfers')
+    expect(one(tx({ description: 'PAYMENT - MASTERCARD', amount: -12000 })).category).toBe('Transfers')
   })
 })

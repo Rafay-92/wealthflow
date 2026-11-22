@@ -5,14 +5,63 @@ import messyCsv from '../../../public/sample-data/messy-export.csv?raw'
 import overlapCsv from '../../../public/sample-data/everyday-chequing-oct15-nov20.csv?raw'
 import octCsv from '../../../public/sample-data/everyday-chequing-oct.csv?raw'
 import frenchCsv from '../../../public/sample-data/compte-cheques-nov.csv?raw'
+import scotiaCsv from '../../../public/sample-data/scotiabank-style.csv?raw'
+import tdCsv from '../../../public/sample-data/td-style-no-header.csv?raw'
+import { NO_HEADER } from './parseCsv'
 import { describe, expect, it } from 'vitest'
 import { suggestMapping } from './detectColumns'
-import { detectHeaderRow, parseCsvText } from './parseCsv'
+import { columnHeaders, detectHeaderRow, parseCsvText } from './parseCsv'
 import { isSelectedByDefault, prepareImport, toTransactions } from './prepareImport'
 import type { Transaction } from '../../types/transaction'
 import { categorizeAll } from '../categorize/categorize'
 import { summarize } from '../analytics/summary'
 import { monthPeriod } from '../analytics/periods'
+
+describe('Scotiabank-style export: positive amounts plus a Debit/Credit column', () => {
+  const rows = parseCsvText(scotiaCsv)
+  const headerRow = detectHeaderRow(rows)
+  const mapping = suggestMapping(rows[headerRow]!, rows.slice(headerRow + 1))
+  const prepared = prepareImport(rows, headerRow, mapping, [], 'scotia')
+  const amountOf = (d: string) => prepared.rows.find((r) => r.draft.description === d)!.draft.amount
+
+  it('finds the "Type of Transaction" column', () => {
+    expect(mapping).toMatchObject({ dateColumn: 1, descriptionColumn: 2, amountMode: 'single', amountColumn: 6, typeColumn: 5, invertAmounts: false })
+  })
+
+  it('makes purchases negative and deposits positive (the reported bug)', () => {
+    expect(prepared.errors).toEqual([])
+    expect(amountOf('ALIBABA.COM')).toBe(-8999) // money out, not income
+    expect(amountOf('LOBLAWS #1234')).toBe(-5230)
+    expect(prepared.rows.filter((r) => r.draft.description === 'PAYROLL DEPOSIT').map((r) => r.draft.amount)).toEqual([245000, 245000])
+  })
+
+  it('gives correct totals once categorised', () => {
+    const all = categorizeAll(toTransactions(prepared.rows.map((r) => r.draft), [], 'scotia', 'imp'), [])
+    const s = summarize(all, monthPeriod('2026-11'))
+    expect(s.income).toBe(490000)
+    expect(s.expenses).toBe(8999 + 5230 + 1649 + 9640 + 2415 + 625)
+    expect(all.find((t) => t.description === 'ALIBABA.COM')!.category).toBe('Shopping')
+  })
+})
+
+describe('TD-style export: no header row, separate debit and credit columns', () => {
+  const rows = parseCsvText(tdCsv)
+  const headerRow = detectHeaderRow(rows)
+  const mapping = suggestMapping(columnHeaders(rows, headerRow), rows.slice(headerRow + 1))
+  const prepared = prepareImport(rows, headerRow, mapping, [], 'td')
+
+  it('recognises that there is no header, so the first transaction is not lost', () => {
+    expect(headerRow).toBe(NO_HEADER)
+    expect(prepared.rows).toHaveLength(6)
+    expect(prepared.rows[0]!.draft).toMatchObject({ rowNumber: 1, description: 'PAYROLL ACME', amount: 245000 })
+  })
+
+  it('works out every column from the contents', () => {
+    expect(mapping).toMatchObject({ dateColumn: 0, descriptionColumn: 1, amountMode: 'split', debitColumn: 2, creditColumn: 3, balanceColumn: 4 })
+    expect(prepared.rows[1]!.draft.amount).toBe(-8999) // ALIBABA.COM, money out
+    expect(prepared.closing).toEqual({ balance: 824737, asOf: '2026-11-16' })
+  })
+})
 
 describe('French-Canadian sample export', () => {
   it('detects semicolons, French headers and decimal commas, and reads every row', () => {

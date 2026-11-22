@@ -12,7 +12,8 @@ import { ImportHistory } from '../components/upload/ImportHistory'
 import { ImportReview } from '../components/upload/ImportReview'
 import type { AccountChoice } from '../components/upload/types'
 import { suggestMapping } from '../lib/csv/detectColumns'
-import { checkFile, detectHeaderRow, headerSignature, ImportError, parseCsvText } from '../lib/csv/parseCsv'
+import { checkFile, columnHeaders, detectHeaderRow, ImportError, layoutSignature, parseCsvText } from '../lib/csv/parseCsv'
+import { parseAmountToCents } from '../lib/money'
 import { isSelectedByDefault, prepareImport, toTransactions, type PreparedImport } from '../lib/csv/prepareImport'
 import { useFinanceStore } from '../store/financeStore'
 import type { Account } from '../types/account'
@@ -44,6 +45,8 @@ const SAMPLE_FILES = [
   { file: 'everyday-chequing-oct.csv', label: 'Chequing, October', note: 'One amount column, with balance' },
   { file: 'everyday-chequing-oct15-nov20.csv', label: 'Chequing, Oct 15 – Nov 20', note: 'Overlaps the first file: try duplicates' },
   { file: 'rewards-card-nov.csv', label: 'Credit card, November', note: 'Info lines on top, debit/credit columns' },
+  { file: 'scotiabank-style.csv', label: 'Scotiabank style', note: 'Positive amounts with a Debit/Credit column' },
+  { file: 'td-style-no-header.csv', label: 'TD / CIBC style', note: 'No header row; separate debit and credit' },
   { file: 'compte-cheques-nov.csv', label: 'Compte chèques (French)', note: 'Quebec-style: semicolons, 1 234,56 amounts' },
   { file: 'messy-export.csv', label: 'Messy export', note: 'Contains rows that can’t be read' },
 ]
@@ -63,6 +66,8 @@ export function UploadPage() {
   const [headerRow, setHeaderRow] = useState(0)
   const [mapping, setMapping] = useState<ColumnMapping | null>(null)
   const [usedSavedMapping, setUsedSavedMapping] = useState(false)
+  const [autoFlipped, setAutoFlipped] = useState(false)
+  const [manualBalance, setManualBalance] = useState('')
   const [account, setAccount] = useState<AccountChoice>({ mode: 'new', name: '', type: 'checking' })
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -72,11 +77,15 @@ export function UploadPage() {
 
   /** Sets up the mapping screen for a header row, using saved settings when the layout is known. */
   function setupMapping(rows: string[][], header: number) {
-    const signature = headerSignature(rows[header] ?? [])
-    const saved = mappings.find((m) => m.signature === signature)
+    const signature = layoutSignature(rows, header)
+    // Settings saved before the Debit/Credit column existed could repeat a sign
+    // mistake, so they're ignored and the file is detected again.
+    const saved = mappings.find((m) => m.signature === signature && 'typeColumn' in m.mapping)
+    const suggested = suggestMapping(columnHeaders(rows, header), rows.slice(header + 1))
     setHeaderRow(header)
-    setMapping(saved ? saved.mapping : suggestMapping(rows[header] ?? [], rows.slice(header + 1)))
+    setMapping(saved ? saved.mapping : suggested)
     setUsedSavedMapping(Boolean(saved))
+    setAutoFlipped(!saved && suggested.invertAmounts)
     if (saved?.accountId && accounts.some((a) => a.id === saved.accountId)) {
       setAccount({ mode: 'existing', accountId: saved.accountId })
     }
@@ -95,6 +104,7 @@ export function UploadPage() {
       // Never guess the account: guessing wrong would mix two accounts' statements.
       // Saved settings (applied in setupMapping) can pre-select it; otherwise the user chooses.
       setAccount({ mode: 'new', name: '', type: 'checking' })
+      setManualBalance('')
       setupMapping(rows, detectHeaderRow(rows))
       setStep({ kind: 'map' })
     } catch (e) {
@@ -135,7 +145,11 @@ export function UploadPage() {
           : { id: crypto.randomUUID(), name: account.name.trim(), type: account.type }
 
       // Only move the balance forward in time: an old statement mustn't overwrite a newer balance.
-      const closing = step.prepared.closing
+      // The statement's own balance column wins; otherwise the "Balance today" the user typed,
+      // dated at the file's last transaction.
+      const typed = manualBalance.trim() ? parseAmountToCents(manualBalance) : null
+      const lastDate = step.prepared.rows.reduce<string | null>((max, r) => (max === null || r.draft.date > max ? r.draft.date : max), null)
+      const closing = step.prepared.closing ?? (typed !== null && lastDate ? { balance: typed, asOf: lastDate } : null)
       const updatedAccount =
         closing && (!base.balanceAsOf || closing.asOf >= base.balanceAsOf)
           ? { ...base, balance: closing.balance, balanceAsOf: closing.asOf }
@@ -161,7 +175,7 @@ export function UploadPage() {
         },
         mapping: remember
           ? {
-              signature: headerSignature(file.rows[headerRow] ?? []),
+              signature: layoutSignature(file.rows, headerRow),
               headerRow,
               mapping,
               accountId: updatedAccount.id,
@@ -284,6 +298,10 @@ export function UploadPage() {
           remember={remember}
           onRememberChange={setRemember}
           usedSavedMapping={usedSavedMapping}
+          autoFlipped={autoFlipped}
+          manualBalance={manualBalance}
+          onManualBalanceChange={setManualBalance}
+          manualBalanceError={manualBalance.trim() && parseAmountToCents(manualBalance) === null ? 'That isn’t a valid amount, e.g. 4,218.36' : null}
           onBack={startOver}
           onContinue={goToReview}
         />

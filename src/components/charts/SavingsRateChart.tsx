@@ -1,6 +1,6 @@
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { MonthlyWithRate } from '../../lib/analytics/analytics'
-import { formatMonth, type MonthKey } from '../../lib/dates'
+import { formatBucket, type Granularity } from '../../lib/analytics/granularity'
 import { formatCents, formatPercent } from '../../lib/money'
 import { TooltipFrame, TooltipRow } from './ChartTooltip'
 import { AXIS_LINE, AXIS_TICK, GRID_STROKE } from './chartTheme'
@@ -13,7 +13,7 @@ const LINE_COLOR = 'var(--color-series-income)'
  * obvious. Months with no income have no rate, so the line has a gap there
  * rather than pretending it was 0%.
  */
-export function SavingsRateChart({ data, partialThrough }: { data: readonly MonthlyWithRate[]; partialThrough?: string }) {
+export function SavingsRateChart({ data, partialThrough, granularity = 'month' }: { data: readonly MonthlyWithRate[]; partialThrough?: string; granularity?: Granularity }) {
   const last = data.at(-1)?.month
   const rates = data.map((d) => d.savingsRate).filter((r): r is number => r !== null)
   // Even, clean ticks (0%, 10%, 20%…), with the step widening for big ranges.
@@ -31,7 +31,7 @@ export function SavingsRateChart({ data, partialThrough }: { data: readonly Mont
             <CartesianGrid vertical={false} stroke={GRID_STROKE} />
             <XAxis
               dataKey="month"
-              tickFormatter={(m: MonthKey) => formatMonth(m, 'short') + (partialThrough && m === last ? '*' : '')}
+              tickFormatter={(m: string) => formatBucket(m, granularity) + (partialThrough && m === last ? '*' : '')}
               tickLine={false}
               axisLine={AXIS_LINE}
               tick={AXIS_TICK}
@@ -54,7 +54,7 @@ export function SavingsRateChart({ data, partialThrough }: { data: readonly Mont
                 const row = payload?.[0]?.payload as MonthlyWithRate | undefined
                 if (!active || !row) return null
                 return (
-                  <TooltipFrame title={formatMonth(row.month) + (partialThrough && row.month === last ? ` · to ${partialThrough}` : '')}>
+                  <TooltipFrame title={formatBucket(row.month, granularity, 'long') + (partialThrough && row.month === last ? ` · to ${partialThrough}` : '')}>
                     <TooltipRow label="Savings rate" value={formatPercent(row.savingsRate)} color={LINE_COLOR} />
                     <TooltipRow label="Saved" value={formatCents(row.net)} />
                   </TooltipFrame>
@@ -77,11 +77,11 @@ export function SavingsRateChart({ data, partialThrough }: { data: readonly Mont
         </ResponsiveContainer>
       </div>
       <table className="sr-only">
-        <caption>Savings rate by month</caption>
+        <caption>Savings rate by {granularity}</caption>
         <tbody>
           {data.map((d) => (
             <tr key={d.month}>
-              <td>{formatMonth(d.month)}</td>
+              <td>{formatBucket(d.month, granularity, 'long')}</td>
               <td>{formatPercent(d.savingsRate)}</td>
             </tr>
           ))}

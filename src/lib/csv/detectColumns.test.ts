@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ColumnMapping } from '../../types/import'
-import { mappingProblems, suggestMapping } from './detectColumns'
+import { mappingProblems, readTransactionType, suggestMapping } from './detectColumns'
 
 describe('suggestMapping', () => {
   it('maps a single-amount layout', () => {
@@ -63,6 +63,46 @@ describe('suggestMapping', () => {
       [['2026-11-03', 'COFFEE', '-4.50'], ['2026-11-04', 'PAY', '100']],
     )
     expect(mapping.amountColumn).toBe(2)
+  })
+})
+
+describe('readTransactionType', () => {
+  it.each([
+    ['Debit', 'out'],
+    ['DR', 'out'],
+    ['withdrawal', 'out'],
+    ['Retrait', 'out'],
+    ['Credit', 'in'],
+    ['cr.', 'in'],
+    ['Deposit', 'in'],
+    ['Dépôt', 'in'],
+    ['Pending', null],
+    ['', null],
+  ] as const)('%j -> %s', (value, expected) => {
+    expect(readTransactionType(value)).toBe(expected)
+  })
+})
+
+describe('sign detection', () => {
+  const rows = (amounts: string[]) => amounts.map((a, i) => [`2026-11-0${i + 1}`, `SHOP ${i}`, a])
+
+  it('flips signs when nearly every amount is positive (card exports list purchases as positive)', () => {
+    const mapping = suggestMapping(['Date', 'Description', 'Amount'], rows(['12.00', '45.10', '8.99', '120.00', '15.00', '-300.00']))
+    expect(mapping.invertAmounts).toBe(true)
+  })
+
+  it('leaves normal bank exports alone', () => {
+    const mapping = suggestMapping(['Date', 'Description', 'Amount'], rows(['-12.00', '-45.10', '2450.00', '-8.99', '-120.00', '-15.00']))
+    expect(mapping.invertAmounts).toBe(false)
+  })
+
+  it('does not guess from too few rows', () => {
+    expect(suggestMapping(['Date', 'Description', 'Amount'], rows(['12.00', '45.10'])).invertAmounts).toBe(false)
+  })
+
+  it('ignores a "Type" column that does not contain debit/credit words', () => {
+    const mapping = suggestMapping(['Date', 'Description', 'Type', 'Amount'], [['2026-11-01', 'X', 'Online', '-5.00']])
+    expect(mapping.typeColumn).toBeNull()
   })
 })
 

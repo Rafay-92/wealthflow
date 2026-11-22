@@ -4,6 +4,7 @@ import {
   FileText,
   Landmark,
   LayoutDashboard,
+  PiggyBank,
   Repeat,
   Settings,
   Sparkles,
@@ -42,6 +43,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
     path: '/analytics',
     label: 'Analytics',
     icon: BarChart3,
+  },
+  {
+    path: '/budgets',
+    label: 'Budgets',
+    icon: PiggyBank,
   },
   {
     path: '/insights',

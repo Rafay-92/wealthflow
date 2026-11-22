@@ -2,8 +2,10 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
 import type { SubscriptionDecision } from '../lib/recurring/subscriptions'
-import type { CategoryRule, Transaction } from '../types/transaction'
+import type { CategoryRule, DeletedTransaction, Transaction } from '../types/transaction'
+import type { Budget } from '../types/budget'
 import type { WealthEntry, WealthItem } from '../types/wealth'
+import { pointsFromMonthlyBalances, type BalancePoint, type MonthlyBalance } from '../types/balance'
 
 /**
  * The on-device database (IndexedDB, via the Dexie library).
@@ -27,6 +29,9 @@ export class WealthFlowDB extends Dexie {
   subscriptionDecisions!: EntityTable<SubscriptionDecision, 'key'>
   wealthItems!: EntityTable<WealthItem, 'id'>
   wealthEntries!: EntityTable<WealthEntry, 'id'>
+  balancePoints!: EntityTable<BalancePoint, 'id'>
+  deletedTransactions!: EntityTable<DeletedTransaction, 'id'>
+  budgets!: EntityTable<Budget, 'category'>
 
   constructor(name = 'wealthflow') {
     super(name)
@@ -50,6 +55,28 @@ export class WealthFlowDB extends Dexie {
       wealthItems: 'id',
       wealthEntries: 'id, itemId, date',
     })
+    // Opening / actual closing balances per bank account per month. Kept apart
+    // from transactions on purpose: they must never count as income.
+    this.version(5).stores({
+      monthlyBalances: 'id, accountId, month',
+    })
+    // Live editing: a record of imported transactions you deleted (so a
+    // re-import doesn't bring them back), and monthly budgets per category.
+    this.version(6).stores({
+      deletedTransactions: 'id, importId',
+      budgets: 'category',
+    })
+    // Balances you enter are kept per DATE (not per month), so a custom period
+    // like Nov 22 – Dec 22 can have its own opening balance. Monthly balances
+    // saved by version 5–6 are converted, then the old table is removed.
+    this.version(7)
+      .stores({ balancePoints: 'id, accountId, date', monthlyBalances: null })
+      .upgrade(async (tx) => {
+        const old = (await tx.table('monthlyBalances').toArray()) as MonthlyBalance[]
+        if (old.length === 0) return
+        const latest = (await tx.table('transactions').orderBy('date').last()) as { date: string } | undefined
+        await tx.table('balancePoints').bulkPut(pointsFromMonthlyBalances(old, latest?.date ?? null))
+      })
   }
 }
 

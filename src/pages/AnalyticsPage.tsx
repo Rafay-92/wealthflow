@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { CategoryComparison } from '../components/analytics/CategoryComparison'
 import { CategoryRanking } from '../components/analytics/CategoryRanking'
+import { GranularitySelect } from '../components/analytics/GranularitySelect'
 import { RangeSelect } from '../components/analytics/RangeSelect'
 import { CategoryLabel } from '../components/CategoryLabel'
 import { CategoryTrendChart } from '../components/charts/CategoryTrendChart'
@@ -13,7 +14,8 @@ import { Card } from '../components/ui/Card'
 import { PageHeader } from '../components/ui/PageHeader'
 import { SampleDataNotice } from '../components/ui/SampleDataNotice'
 import { Section } from '../components/ui/Section'
-import { buildAnalytics, categoryByMonth, daysInPeriod, largestExpenses, type RangePreset } from '../lib/analytics/analytics'
+import { buildAnalytics, categoryByBucket, daysInPeriod, largestExpenses, MAX_QUARTERS, type RangePreset } from '../lib/analytics/analytics'
+import { formatBucket, GRANULARITIES, previousBucket, type Granularity } from '../lib/analytics/granularity'
 import type { Period } from '../lib/analytics/periods'
 import { formatDay, formatMonth } from '../lib/dates'
 import { formatCents, formatPercent } from '../lib/money'
@@ -29,14 +31,15 @@ export function AnalyticsPage() {
   const { status, isSample, transactions, accounts } = useDisplayData()
   const [range, setRange] = useState<RangePreset>(6)
   const [picked, setPicked] = useState<Category | null>(null)
+  const [granularity, setGranularity] = useState<Granularity>('month')
 
-  const data = useMemo(() => buildAnalytics(transactions, range), [transactions, range])
+  const data = useMemo(() => buildAnalytics(transactions, range, granularity), [transactions, range, granularity])
 
   // The selected category: your pick if it still has spending in this range, else the top one.
   const selected = data && (data.categories.find((c) => c.category === picked)?.category ?? data.categories[0]?.category ?? null)
 
   const categoryTrend = useMemo(
-    () => (data && selected ? categoryByMonth(transactions, selected, data.months) : []),
+    () => (data && selected ? categoryByBucket(transactions, selected, data.buckets) : []),
     [transactions, data, selected],
   )
   const categoryLargest = useMemo(
@@ -70,12 +73,27 @@ export function AnalyticsPage() {
   const partialThrough = comparison.isPartial ? formatDay(comparison.current.end) : undefined
   const days = daysInPeriod(data.period)
   const monthCount = data.months.length
-  const currentLabel = comparison.isPartial
-    ? `${formatMonth(data.months.at(-1)!, 'short')} 1–${Number(comparison.current.end.slice(8))}`
-    : formatMonth(data.months.at(-1)!, 'short')
-  const previousLabel = comparison.isPartial
-    ? `${formatMonth(comparison.previous.start.slice(0, 7), 'short')} 1–${Number(comparison.previous.end.slice(8))}`
-    : formatMonth(comparison.previous.start.slice(0, 7), 'short')
+  const noun = GRANULARITIES.find((g) => g.value === granularity)!.noun
+  const nouns = (n: number) => `${n} ${noun}${n === 1 ? '' : 's'}`
+  const bucketCount = data.monthly.length
+  const partialRange = (p: Period) => `${formatDay(p.start)} – ${formatDay(p.end)}`
+  const currentLabel =
+    granularity === 'month'
+      ? comparison.isPartial
+        ? `${formatMonth(data.months.at(-1)!, 'short')} 1–${Number(comparison.current.end.slice(8))}`
+        : formatMonth(data.months.at(-1)!, 'short')
+      : comparison.isPartial
+        ? `${formatBucket(comparison.month, granularity)} (${partialRange(comparison.current)})`
+        : formatBucket(comparison.month, granularity)
+  const previousLabel =
+    granularity === 'month'
+      ? comparison.isPartial
+        ? `${formatMonth(comparison.previous.start.slice(0, 7), 'short')} 1–${Number(comparison.previous.end.slice(8))}`
+        : formatMonth(comparison.previous.start.slice(0, 7), 'short')
+      : comparison.isPartial
+        ? `${formatBucket(previousBucket(comparison.month, granularity), granularity)} (${partialRange(comparison.previous)})`
+        : formatBucket(previousBucket(comparison.month, granularity), granularity)
+  const overTitle = `${noun[0]!.toUpperCase()}${noun.slice(1)} over ${noun}`
   const accountName = (id?: string) => accounts.find((a) => a.id === id)?.name
 
   return (
@@ -83,7 +101,12 @@ export function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         description={`${describePeriod(data.period)} · ${days} days of data`}
-        actions={<RangeSelect value={range} onChange={setRange} />}
+        actions={
+          <>
+            <GranularitySelect value={granularity} onChange={setGranularity} />
+            {granularity === 'month' && <RangeSelect value={range} onChange={setRange} />}
+          </>
+        }
       />
 
       {isSample && <SampleDataNotice />}
@@ -102,8 +125,8 @@ export function AnalyticsPage() {
           </Section>
 
           {selected && (
-            <Section title={`${selected} over time`} subtitle="Spending per month" className="lg:col-span-3">
-              <CategoryTrendChart category={selected} data={categoryTrend} partialThrough={partialThrough} />
+            <Section title={`${selected} over time`} subtitle={`Spending per ${noun}`} className="lg:col-span-3">
+              <CategoryTrendChart category={selected} data={categoryTrend} partialThrough={partialThrough} granularity={granularity} />
               <h3 className="mt-6 mb-2 text-sm font-medium">Biggest {selected.toLowerCase()} purchases</h3>
               <ul className="divide-y divide-navy-600/40">
                 {categoryLargest.map((t) => (
@@ -119,17 +142,20 @@ export function AnalyticsPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Section title="Income vs expenses" subtitle={`Per month · ${monthCount} ${monthCount === 1 ? 'month' : 'months'}`}>
-            <IncomeExpenseChart data={data.monthly} partialThrough={partialThrough} />
+          <Section
+            title="Income vs expenses"
+            subtitle={`Per ${noun} · ${nouns(bucketCount)}${granularity === 'quarter' && bucketCount === MAX_QUARTERS ? ' (latest)' : ''}`}
+          >
+            <IncomeExpenseChart data={data.monthly} partialThrough={partialThrough} granularity={granularity} />
           </Section>
-          <Section title="Savings rate" subtitle="Share of income kept each month">
-            <SavingsRateChart data={data.monthly} partialThrough={partialThrough} />
+          <Section title="Savings rate" subtitle={`Share of income kept each ${noun}`}>
+            <SavingsRateChart data={data.monthly} partialThrough={partialThrough} granularity={granularity} />
           </Section>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
           <Section
-            title="Month over month"
+            title={overTitle}
             subtitle={comparison.isPartial ? `Same days compared: ${currentLabel} vs ${previousLabel}` : `${currentLabel} vs ${previousLabel}`}
             className="lg:col-span-3"
           >
@@ -161,7 +187,7 @@ export function AnalyticsPage() {
 
         {comparison.isPartial && (
           <p className="text-xs text-ink-faint">
-            * {formatMonth(data.months.at(-1)!)} is month to date: your data runs through {partialThrough}.
+            * {formatBucket(comparison.month, granularity, 'long')} is {noun} to date: your data runs through {partialThrough}.
           </p>
         )}
       </div>

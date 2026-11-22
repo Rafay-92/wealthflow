@@ -10,12 +10,13 @@ A personal finance analytics app for Canada. Import CSV bank statements and see 
 
 | Page | What it does |
 | --- | --- |
-| **Dashboard** | Total balance, monthly income/expenses/savings/savings rate vs last month, insights, trends, spending breakdown, recent transactions |
+| **Dashboard** | **Calendar month or custom period** (any start and end date, across months; kept in the web address). **Live** total and per-account balances, transaction count, monthly income/expenses/net cash flow/savings rate vs last month, budget progress, a **balance check** per bank account (opening + income − expenses ± transfers = expected closing, compared with your statement), insights, trends, spending breakdown, recent transactions |
 | **Import** | CSV upload with drag and drop, header detection, column mapping with live preview, English and French (Quebec) exports including `1 234,56 $` amounts, date-format ambiguity warnings, duplicate detection, review before saving, undo per import |
-| **Transactions** | Search and filter, change categories, create merchant rules, "needs review" queue |
-| **Analytics** | 3M/6M/12M/All ranges, spending by category with per-category trends, income vs expenses, savings rate, month-over-month comparison, largest purchases, average daily spending |
+| **Transactions** | **Add, edit and delete** transactions; search; filter by month, date range, category, account, type (income/expense/refund/transfer) and merchant; sort by date or amount; change categories with an optional rule for the merchant's future transactions; "needs review" queue |
+| **Budgets** | Monthly budget per category: budget, spent, remaining, % used, with a pace marker for the month so far |
+| **Analytics** | Monthly, quarterly or yearly grouping; 3M/6M/12M/All ranges, spending by category with per-category trends, income vs expenses, savings rate, month-over-month comparison, largest purchases, average daily spending |
 | **Insights** | Rule-based findings, each with "how this was calculated" |
-| **Reports** | Monthly report with observations, exportable as a text-based PDF |
+| **Reports** | Monthly or custom-period report with observations and the balance check, exportable as a text-based PDF |
 | **Subscriptions** | Detected monthly payments with monthly and yearly cost; confirm or dismiss each |
 | **Wealth** | Manually tracked assets (incl. TFSA, RRSP, FHSA, RESP) and liabilities (incl. lines of credit), net worth over time |
 | **Settings** | Data overview, JSON backup and validated restore, delete all data, privacy facts |
@@ -28,9 +29,9 @@ Until you import a statement, every page shows **fictional sample data**. Sample
 | --- | --- |
 | `npm install` | Install dependencies |
 | `npm run dev` | Dev server at http://localhost:5173 |
-| `npm test` | Run the unit tests once (329 tests) |
+| `npm test` | Run the unit tests once (455 tests) |
 | `npm run test:watch` | Re-run tests on every save |
-| `npm run test:e2e` | Build, then run the browser tests in Microsoft Edge (14 tests) |
+| `npm run test:e2e` | Build, then run the browser tests in Microsoft Edge (22 tests) |
 | `npm run build` | Type-check and build for production (into `dist/`) |
 | `npm run preview` | Serve the production build at http://localhost:4173 (restart it after each build) |
 | `npm run lint` | Check for common mistakes |
@@ -64,9 +65,15 @@ Data flows one way: **lib → store → pages → components**. Pages only displ
 
 - **Integer cents, in CAD.** `0.1 + 0.2 !== 0.3` in JavaScript, so all money is stored as integers. `parseAmountToCents` parses text directly, reads `CA$`/`C$`/`CAD` markers, and rejects ambiguous input such as `12,34` unless the file is set to the French number format (auto-detected).
 - **Transfers are not spending.** Money moving between your own accounts is detected (matching pairs across accounts, plus wording from Canadian banks such as `TFR-TO`, `WWW TRF`, `MB-TRANSFER`, `VIREMENT`) and excluded from income and spending. Interac e-Transfers and other payments to people are never treated as transfers.
-- **Fair comparisons.** A partial month is compared with the same days of the previous month (Nov 1–20 vs Oct 1–20).
-- **Categorization priority:** your manual choice → your rules → transfer pairs → transfer wording → built-in merchant keywords (longest match wins) → fallback marked "needs review".
-- **Schema migrations.** The database is at version 4. Each stage added a version rather than editing an old one, and a test upgrades a version-1 database without losing data.
+- **One source of truth.** Every total, chart, balance and budget is calculated from the saved transactions each time; none is stored. Adding, editing or deleting a transaction writes to IndexedDB, the store reloads, and every page recalculates. Only inputs are stored: transactions, budgets, opening balances.
+- **Refunds, reversals and card payments.** A refund or reversal lowers spending in its category (or the category of the earlier purchase from the same merchant); it's never income. A reversed paycheque lowers income. An unrecognised credit on a credit card is treated as a card payment, and "VISA PAYMENT"-style debits from chequing are transfers, so purchases aren't counted twice.
+- **Opening balances are labelled, never assumed.** A balance you type is stored as "what the account held at the start of a date" (a period's closing is the start of the next day). Every opening is shown as **User-provided** (typed for that date), **Inferred from a reported closing balance** (the bank's balance minus the transactions in between), **Estimated** (carried from a balance you typed for another date) or **Unknown**. Only a user-provided opening can produce a verified "Balanced"; with an inferred one the expected closing matches the bank by construction, so the check says it can't be verified.
+- **Calendar month vs custom period.** A month is compared with the month before; a custom period with the same number of days just before it. Both use the same calculations. Budgets, insights and recurring payments are per calendar month, so they're shown in month view only.
+- **Live balances.** Each account's balance starts from a known figure (the bank's reported balance or an opening balance you entered, whichever is most recent) plus every transaction after it. Opening balances are never income.
+- **Duplicate protection survives edits.** Editing an imported transaction freezes the bank's original values, and deleting one leaves a small record, so re-importing an overlapping statement doesn't duplicate or resurrect it. Undoing the import clears those records.
+- **Fair comparisons.** A partial month (or quarter, or year) is compared with the same number of days of the previous one (Nov 1–20 vs Oct 1–20).
+- **Categorization priority:** your manual choice → your rules → e-transfers → transfer pairs → transfer wording → refunds/reversals → built-in merchant keywords (longest match wins) → fallback marked "needs review".
+- **Schema migrations.** The database is at version 7. Each stage added a version rather than editing an old one, and a test upgrades a version-1 database without losing data.
 - **Insights are AI-ready but rule-based.** `buildInsightContext` produces aggregated numbers only; an `InsightProvider` turns them into insights. An AI provider could implement the same interface, receiving the summary, never raw statements, and only with the user's opt-in.
 
 ## Testing

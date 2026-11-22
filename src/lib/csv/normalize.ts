@@ -3,6 +3,7 @@ import type { ISODate } from '../dates'
 import { parseAmountToCents, type Cents } from '../money'
 import { parseDate } from './dateFormats'
 import { isBlankRow } from './parseCsv'
+import { readTransactionType } from './detectColumns'
 
 export interface NormalizeResult {
   drafts: DraftTransaction[]
@@ -64,6 +65,14 @@ function readAmount(cell: (column: number | null) => string, mapping: ColumnMapp
     const parsed = parseAmountToCents(raw, format)
     if (parsed === null) return `“${raw}” isn’t a valid amount.`
     amount = parsed
+
+    // A type column ("Debit"/"Credit") decides the sign; the amount is just the size.
+    if (mapping.typeColumn != null) {
+      const rawType = cell(mapping.typeColumn)
+      const direction = readTransactionType(rawType)
+      if (!direction) return rawType ? `Unknown transaction type “${rawType}” (expected Debit or Credit).` : 'Missing transaction type.'
+      amount = direction === 'out' ? -Math.abs(amount) : Math.abs(amount)
+    }
   } else {
     const rawOut = cell(mapping.debitColumn)
     const rawIn = cell(mapping.creditColumn)

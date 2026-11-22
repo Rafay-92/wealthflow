@@ -1,12 +1,14 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { MonthlyTotals } from '../../lib/analytics/trends'
-import { formatMonth, type MonthKey } from '../../lib/dates'
+import { formatBucket, type Granularity } from '../../lib/analytics/granularity'
 import { formatCents, formatCentsCompact } from '../../lib/money'
 
 interface IncomeExpenseChartProps {
   data: readonly MonthlyTotals[]
   /** If the last month is incomplete, the date the data stops (shown in the tooltip). */
   partialThrough?: string
+  /** What each bar covers. Default: a month. */
+  granularity?: Granularity
 }
 
 const SERIES = [
@@ -21,7 +23,7 @@ const SERIES = [
  * data end and a square baseline, a 2px gap between neighbours, hairline
  * gridlines, a legend (two series), and a hover tooltip for exact values.
  */
-export function IncomeExpenseChart({ data, partialThrough }: IncomeExpenseChartProps) {
+export function IncomeExpenseChart({ data, partialThrough, granularity = 'month' }: IncomeExpenseChartProps) {
   const lastMonth = data.at(-1)?.month
 
   return (
@@ -41,7 +43,7 @@ export function IncomeExpenseChart({ data, partialThrough }: IncomeExpenseChartP
             <CartesianGrid vertical={false} stroke="var(--color-chart-grid)" />
             <XAxis
               dataKey="month"
-              tickFormatter={(m: MonthKey) => formatMonth(m, 'short') + (partialThrough && m === lastMonth ? '*' : '')}
+              tickFormatter={(m: string) => formatBucket(m, granularity) + (partialThrough && m === lastMonth ? '*' : '')}
               tickLine={false}
               axisLine={{ stroke: 'var(--color-navy-600)' }}
               tick={{ fill: 'var(--color-ink-faint)', fontSize: 12 }}
@@ -61,6 +63,7 @@ export function IncomeExpenseChart({ data, partialThrough }: IncomeExpenseChartP
                   active={active}
                   row={payload?.[0]?.payload as MonthlyTotals | undefined}
                   partialThrough={payload?.[0]?.payload?.month === lastMonth ? partialThrough : undefined}
+                  granularity={granularity}
                 />
               )}
             />
@@ -71,14 +74,14 @@ export function IncomeExpenseChart({ data, partialThrough }: IncomeExpenseChartP
         </ResponsiveContainer>
       </div>
 
-      {partialThrough && <p className="mt-3 text-xs text-ink-faint">* Month to date, through {partialThrough}</p>}
+      {partialThrough && <p className="mt-3 text-xs text-ink-faint">* {granularity === 'month' ? 'Month' : granularity === 'quarter' ? 'Quarter' : 'Year'} to date, through {partialThrough}</p>}
 
       {/* The same numbers as a table, for screen readers. */}
       <table className="sr-only">
-        <caption>Income and expenses by month</caption>
+        <caption>Income and expenses by {granularity}</caption>
         <thead>
           <tr>
-            <th>Month</th>
+            <th>Period</th>
             <th>Income</th>
             <th>Expenses</th>
           </tr>
@@ -86,7 +89,7 @@ export function IncomeExpenseChart({ data, partialThrough }: IncomeExpenseChartP
         <tbody>
           {data.map((row) => (
             <tr key={row.month}>
-              <td>{formatMonth(row.month)}</td>
+              <td>{formatBucket(row.month, granularity, 'long')}</td>
               <td>{formatCents(row.income)}</td>
               <td>{formatCents(row.expenses)}</td>
             </tr>
@@ -97,12 +100,12 @@ export function IncomeExpenseChart({ data, partialThrough }: IncomeExpenseChartP
   )
 }
 
-function TrendTooltip({ active, row, partialThrough }: { active?: boolean; row?: MonthlyTotals; partialThrough?: string }) {
+function TrendTooltip({ active, row, partialThrough, granularity }: { active?: boolean; row?: MonthlyTotals; partialThrough?: string; granularity: Granularity }) {
   if (!active || !row) return null
   return (
     <div className="min-w-44 rounded-lg border border-navy-600 bg-navy-900 px-3 py-2.5 text-xs shadow-xl">
       <p className="mb-2 font-medium text-ink">
-        {formatMonth(row.month)}
+        {formatBucket(row.month, granularity, 'long')}
         {partialThrough && <span className="font-normal text-ink-faint"> · to {partialThrough}</span>}
       </p>
       {SERIES.map((s) => (

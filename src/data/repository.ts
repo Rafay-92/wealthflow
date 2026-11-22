@@ -1,8 +1,11 @@
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
 import type { SubscriptionDecision, SubscriptionStatus } from '../lib/recurring/subscriptions'
-import type { CategoryRule, Transaction } from '../types/transaction'
+import type { CategoryRule, DeletedTransaction, Transaction } from '../types/transaction'
+import type { Budget } from '../types/budget'
+import { importFingerprint } from '../lib/csv/duplicates'
 import type { WealthEntry, WealthItem } from '../types/wealth'
+import type { BalancePoint } from '../types/balance'
 import { db as defaultDb, type WealthFlowDB } from './db'
 
 /**
@@ -20,10 +23,13 @@ export interface StoredData {
   subscriptionDecisions: SubscriptionDecision[]
   wealthItems: WealthItem[]
   wealthEntries: WealthEntry[]
+  balancePoints: BalancePoint[]
+  deletedTransactions: DeletedTransaction[]
+  budgets: Budget[]
 }
 
 export async function loadAll(db: WealthFlowDB = defaultDb): Promise<StoredData> {
-  const [transactions, accounts, imports, mappings, rules, subscriptionDecisions, wealthItems, wealthEntries] = await Promise.all([
+  const [transactions, accounts, imports, mappings, rules, subscriptionDecisions, wealthItems, wealthEntries, balancePoints, deletedTransactions, budgets] = await Promise.all([
     db.transactions.orderBy('date').toArray(),
     db.accounts.toArray(),
     db.imports.orderBy('importedAt').reverse().toArray(),
@@ -32,8 +38,11 @@ export async function loadAll(db: WealthFlowDB = defaultDb): Promise<StoredData>
     db.subscriptionDecisions.toArray(),
     db.wealthItems.toArray(),
     db.wealthEntries.orderBy('date').toArray(),
+    db.balancePoints.toArray(),
+    db.deletedTransactions.toArray(),
+    db.budgets.toArray(),
   ])
-  return { transactions, accounts, imports, mappings, rules, subscriptionDecisions, wealthItems, wealthEntries }
+  return { transactions, accounts, imports, mappings, rules, subscriptionDecisions, wealthItems, wealthEntries, balancePoints, deletedTransactions, budgets }
 }
 
 /** Saves a confirm/dismiss decision, or clears it when `status` is null. */
@@ -62,6 +71,42 @@ export async function commitImport(input: CommitImportInput, db: WealthFlowDB = 
     await db.imports.add(input.record)
     if (input.mapping) await db.mappings.put(input.mapping)
   })
+}
+
+/** Saves a balance you entered for the start of a date; null removes it. */
+export async function saveBalancePoint(accountId: string, date: string, amount: number | null, db: WealthFlowDB = defaultDb): Promise<void> {
+  const id = `${accountId}:${date}`
+  if (amount === null) await db.balancePoints.delete(id)
+  else await db.balancePoints.put({ id, accountId, date, amount, updatedAt: new Date().toISOString() })
+}
+
+/** Saves a new or edited transaction, creating its account first if it's new (atomically). */
+export async function saveTransaction(transaction: Transaction, newAccount: Account | null, db: WealthFlowDB = defaultDb): Promise<void> {
+  await db.transaction('rw', [db.transactions, db.accounts], async () => {
+    if (newAccount) await db.accounts.add(newAccount)
+    await db.transactions.put(transaction)
+  })
+}
+
+/**
+ * Deletes transactions. For imported ones, a small record of the bank's
+ * original row is kept, so importing an overlapping statement won't bring them back.
+ */
+export async function deleteTransactions(ids: readonly string[], now: string = new Date().toISOString(), db: WealthFlowDB = defaultDb): Promise<void> {
+  await db.transaction('rw', [db.transactions, db.deletedTransactions], async () => {
+    const found = (await db.transactions.bulkGet([...ids])).filter((t): t is Transaction => t !== undefined)
+    const remembered: DeletedTransaction[] = found
+      .filter((t) => t.importId && t.accountId)
+      .map((t) => ({ id: t.id, accountId: t.accountId!, importId: t.importId!, importKey: importFingerprint(t), deletedAt: now }))
+    if (remembered.length > 0) await db.deletedTransactions.bulkPut(remembered)
+    await db.transactions.bulkDelete(found.map((t) => t.id))
+  })
+}
+
+/** Saves a monthly budget, or removes it when `amount` is null. */
+export async function saveBudget(category: Budget['category'], amount: number | null, db: WealthFlowDB = defaultDb): Promise<void> {
+  if (amount === null) await db.budgets.delete(category)
+  else await db.budgets.put({ category, amount, updatedAt: new Date().toISOString() })
 }
 
 /** Saves changed transactions (e.g. new categories). */
@@ -97,10 +142,11 @@ export async function deleteWealthItem(itemId: string, db: WealthFlowDB = defaul
   })
 }
 
-/** Undoes an import: removes its transactions and its history entry. */
+/** Undoes an import: removes its transactions, its history entry and any memory of rows you deleted from it. */
 export async function removeImport(importId: string, db: WealthFlowDB = defaultDb): Promise<number> {
-  return db.transaction('rw', [db.transactions, db.imports], async () => {
+  return db.transaction('rw', [db.transactions, db.imports, db.deletedTransactions], async () => {
     const removed = await db.transactions.where('importId').equals(importId).delete()
+    await db.deletedTransactions.where('importId').equals(importId).delete()
     await db.imports.delete(importId)
     return removed
   })
@@ -111,7 +157,7 @@ export async function removeImport(importId: string, db: WealthFlowDB = defaultD
  * fails, the database is left exactly as it was before.
  */
 export async function replaceAllData(data: StoredData, db: WealthFlowDB = defaultDb): Promise<void> {
-  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries]
+  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries, db.balancePoints, db.deletedTransactions, db.budgets]
   await db.transaction('rw', tables, async () => {
     await Promise.all(tables.map((t) => t.clear()))
     await db.transactions.bulkAdd(data.transactions)
@@ -122,12 +168,15 @@ export async function replaceAllData(data: StoredData, db: WealthFlowDB = defaul
     await db.subscriptionDecisions.bulkAdd(data.subscriptionDecisions)
     await db.wealthItems.bulkAdd(data.wealthItems)
     await db.wealthEntries.bulkAdd(data.wealthEntries)
+    await db.balancePoints.bulkAdd(data.balancePoints)
+    await db.deletedTransactions.bulkAdd(data.deletedTransactions)
+    await db.budgets.bulkAdd(data.budgets)
   })
 }
 
 /** Permanently erases everything WealthFlow has stored on this device. */
 export async function deleteAllData(db: WealthFlowDB = defaultDb): Promise<void> {
-  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries]
+  const tables = [db.transactions, db.accounts, db.imports, db.mappings, db.rules, db.subscriptionDecisions, db.wealthItems, db.wealthEntries, db.balancePoints, db.deletedTransactions, db.budgets]
   await db.transaction('rw', tables, async () => {
     await Promise.all(tables.map((t) => t.clear()))
   })

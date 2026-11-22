@@ -4,7 +4,8 @@ import { percentOf, type Cents } from '../money'
 import { spendingByCategory, type CategoryTotal } from './byCategory'
 import { comparisonPeriods, isInPeriod, monthPeriod, type MonthComparison, type Period } from './periods'
 import { isTransfer, summarize, type PeriodSummary } from './summary'
-import { monthlyTotals, type MonthlyTotals } from './trends'
+import type { MonthlyTotals } from './trends'
+import { bucketKey, bucketPeriod, bucketsBetween, compareWithPrevious, type Granularity } from './granularity'
 
 export type RangePreset = 3 | 6 | 12 | 'all'
 
@@ -108,20 +109,35 @@ export interface MonthlyWithRate extends MonthlyTotals {
 }
 
 export interface AnalyticsData {
+  granularity: Granularity
+  /** Every calendar month the analysis covers (for per-month averages). */
   months: MonthKey[]
   period: Period
   summary: PeriodSummary
   averageDaily: Cents
   categories: CategoryTotal[]
+  /**
+   * One row per month, quarter or year (by `granularity`), oldest first.
+   * The `month` field holds that period's key: '2026-10', '2026-Q4' or '2026'.
+   */
   monthly: MonthlyWithRate[]
-  /** The latest month in the range compared with the one before it. */
+  /** The full date range of each row in `monthly`, by key. */
+  buckets: { key: string; period: Period }[]
+  /** The latest period in the range compared with the one before it. */
   comparison: MonthComparison
   categoryChanges: CategoryChange[]
   largest: Transaction[]
 }
 
-/** Everything the Analytics page shows, for the chosen range. Null when there's no data. */
-export function buildAnalytics(transactions: readonly Transaction[], preset: RangePreset): AnalyticsData | null {
+/** Quarterly view: at most this many quarters (two years). Yearly view shows every year. */
+export const MAX_QUARTERS = 8
+
+/**
+ * Everything the Analytics page shows, for the chosen range and grouping.
+ * Null when there's no data. Monthly uses `preset` (last 3/6/12 months or all);
+ * quarterly shows up to the last 8 quarters, yearly every year.
+ */
+export function buildAnalytics(transactions: readonly Transaction[], preset: RangePreset, granularity: Granularity = 'month'): AnalyticsData | null {
   if (transactions.length === 0) return null
   let earliest = transactions[0]!.date
   let latest = earliest
@@ -130,23 +146,47 @@ export function buildAnalytics(transactions: readonly Transaction[], preset: Ran
     if (tx.date > latest) latest = tx.date
   }
 
-  const months = analysisMonths(earliest, latest, preset)
+  let months: MonthKey[]
+  let keys: string[]
+  if (granularity === 'month') {
+    months = analysisMonths(earliest, latest, preset)
+    keys = months
+  } else {
+    keys = bucketsBetween(bucketKey(earliest, granularity), bucketKey(latest, granularity), granularity)
+    if (granularity === 'quarter') keys = keys.slice(-MAX_QUARTERS)
+    const firstMonth = toMonthKey(bucketPeriod(keys[0]!, granularity).start)
+    months = monthsEndingAt(toMonthKey(latest), monthsBetween(firstMonth < toMonthKey(earliest) ? toMonthKey(earliest) : firstMonth, toMonthKey(latest)))
+  }
   const period = coveredPeriod(months, earliest, latest)
   const summary = summarize(transactions, period)
-  const comparison = comparisonPeriods(months.at(-1)!, latest)
+  const lastKey = keys.at(-1)!
+  const comparison = granularity === 'month' ? comparisonPeriods(lastKey, latest) : compareWithPrevious(lastKey, granularity, latest)
+  const buckets = keys.map((key) => ({ key, period: bucketPeriod(key, granularity) }))
 
   return {
+    granularity,
     months,
     period,
     summary,
     averageDaily: averageDailySpending(summary.expenses, period),
     categories: spendingByCategory(transactions, period),
-    monthly: monthlyTotals(transactions, months).map((m) => ({
-      ...m,
-      savingsRate: m.income > 0 ? percentOf(m.net, m.income) : null,
-    })),
+    monthly: buckets.map(({ key, period: p }) => {
+      const { income, expenses, net } = summarize(transactions, p)
+      return { month: key, income, expenses, net, savingsRate: income > 0 ? percentOf(net, income) : null }
+    }),
+    buckets,
     comparison,
     categoryChanges: compareCategories(transactions, comparison.current, comparison.previous),
     largest: largestExpenses(transactions, period, 10),
   }
+}
+
+/** One category's net spending in each period (month, quarter or year). */
+export function categoryByBucket(transactions: readonly Transaction[], category: Category, buckets: readonly { key: string; period: Period }[]): CategoryMonth[] {
+  return buckets.map(({ key, period }) => {
+    const amount = transactions
+      .filter((tx) => tx.category === category && isSpending(tx) && isInPeriod(tx.date, period))
+      .reduce((sum, tx) => sum - tx.amount, 0)
+    return { month: key, amount: amount === 0 ? 0 : amount }
+  })
 }

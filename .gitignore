@@ -1,5 +1,38 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+dist-ssr/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local databases and financial data
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+data/
+local-data/
+backups/
+uploads/
+bank-statements/
+financial-statements/
+
+# Personal financial exports
+*.csv
+*.ofx
+*.qfx
+*.qif
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,22 +40,29 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Local configuration
 *.local
 
-# Editor directories and files
+# Editor files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
 # Playwright
-test-results
-playwright-report
+test-results/
+playwright-report/
+# Operating system
+Thumbs.db
+desktop.ini
+
+# Allow fictional sample data and automated test fixtures
+!public/sample-data/
+!public/sample-data/*.csv
+
+!e2e/data/
+!e2e/data/**

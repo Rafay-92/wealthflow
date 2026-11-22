@@ -1,0 +1,9 @@
+Filter,Date,Description,Sub-description,Status,Type of Transaction,Amount
+,2026-11-01,PAYROLL DEPOSIT,ACME CORP,Posted,Credit,2450.00
+,2026-11-02,ALIBABA.COM,Online purchase,Posted,Debit,89.99
+,2026-11-03,LOBLAWS #1234,Point of sale,Posted,Debit,52.30
+,2026-11-05,NETFLIX.COM,Recurring,Posted,Debit,16.49
+,2026-11-08,TORONTO HYDRO,Bill payment,Posted,Debit,96.40
+,2026-11-12,ALIEXPRESS,Online purchase,Posted,Debit,24.15
+,2026-11-15,PAYROLL DEPOSIT,ACME CORP,Posted,Credit,2450.00
+,2026-11-16,TIM HORTONS #22,Point of sale,Posted,Debit,6.25

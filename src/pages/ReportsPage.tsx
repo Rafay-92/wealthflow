@@ -2,7 +2,7 @@ import { AlertCircle, AlertTriangle, Check, FileDown, Info, Repeat } from 'lucid
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { CategoryLabel } from '../components/CategoryLabel'
-import { MonthSelect } from '../components/dashboard/MonthSelect'
+import { PeriodPicker } from '../components/dashboard/PeriodPicker'
 import { SpendingBreakdown } from '../components/dashboard/SpendingBreakdown'
 import { StatCard } from '../components/dashboard/StatCard'
 import { Button } from '../components/ui/Button'
@@ -14,9 +14,12 @@ import { Section } from '../components/ui/Section'
 import { moneyChange, pointsChange } from '../lib/analytics/change'
 import { formatDay, formatMonth } from '../lib/dates'
 import { formatCents, formatPercent } from '../lib/money'
-import { buildMonthlyReport, type Observation } from '../lib/report/monthlyReport'
+import { buildReport, type Observation } from '../lib/report/monthlyReport'
+import { resolvePeriod, selectionFromParams, selectionToParams } from '../lib/analytics/reportPeriod'
+import { OPENING_SOURCE_LABEL } from '../lib/balances/reconcile'
 import { availableMonths, latestDate } from '../lib/transactions'
-import { useDisplayData } from '../store/financeStore'
+import { useDisplayData, useFinanceStore } from '../store/financeStore'
+import type { BalancePoint } from '../types/balance'
 
 /**
  * Icons say whether an observation is good news, not which way a number moved:
@@ -28,19 +31,24 @@ const TONE_ICON = {
   neutral: { Icon: Info, className: 'bg-navy-700 text-ink-muted', label: 'Note' },
 } as const
 
+/** One shared empty list: a new [] each render would make the report rebuild every time. */
+const NO_BALANCES: BalancePoint[] = []
+
 export function ReportsPage() {
-  const { status, isSample, transactions } = useDisplayData()
+  const { status, isSample, transactions, accounts } = useDisplayData()
+  const savedBalances = useFinanceStore((s) => s.balancePoints)
+  const balances = isSample ? NO_BALANCES : savedBalances
   const [searchParams, setSearchParams] = useSearchParams()
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
   const months = useMemo(() => availableMonths(transactions), [transactions])
-  const requested = searchParams.get('month')
-  const month = requested && months.includes(requested) ? requested : months[0]
+  const selection = useMemo(() => selectionFromParams(searchParams, months), [searchParams, months])
   const report = useMemo(
-    () => (month ? buildMonthlyReport(transactions, month, latestDate(transactions)) : null),
-    [transactions, month],
+    () => (selection ? buildReport(transactions, selection, latestDate(transactions), accounts, balances) : null),
+    [transactions, selection, accounts, balances],
   )
+  const period = useMemo(() => (selection ? resolvePeriod(selection, latestDate(transactions)) : null), [selection, transactions])
 
   async function exportPdf() {
     if (!report) return
@@ -60,7 +68,7 @@ export function ReportsPage() {
   }
 
   if (status === 'loading') return null
-  if (!report || !month) {
+  if (!report || !selection || !period) {
     return (
       <>
         <PageHeader title="Reports" />
@@ -75,16 +83,16 @@ export function ReportsPage() {
   }
 
   const { summary, previous } = report
-  const vs = `vs ${report.previousLabel}`
+  const vs = report.kind === 'custom' ? `vs previous ${period.days} days` : `vs ${report.previousLabel}`
 
   return (
     <>
       <PageHeader
-        title="Monthly report"
-        description={report.comparison.isPartial ? `${formatMonth(month)} · month to date (${report.periodLabel})` : formatMonth(month)}
+        title={report.title}
+        description={`${report.kind === 'month' ? 'Calendar month' : 'Custom period'} · ${report.subtitle} · ${report.transactionCount} transactions`}
         actions={
           <>
-            <MonthSelect months={months} value={month} onChange={(m) => setSearchParams({ month: m })} />
+            <PeriodPicker key={selection.kind} selection={selection} period={period} months={months} onChange={(s) => setSearchParams(selectionToParams(s))} />
             <Button variant="primary" onClick={exportPdf} disabled={exporting}>
               <FileDown aria-hidden className="size-4" />
               {exporting ? 'Creating…' : 'Export PDF'}
@@ -108,7 +116,7 @@ export function ReportsPage() {
           <StatCard label="Saved" value={formatCents(summary.net)} change={previous && moneyChange(summary.net, previous.net, true)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint="Nothing to compare with" />
           <StatCard
             label="Savings rate"
-            value={formatPercent(summary.savingsRate)}
+            value={formatPercent(summary.savingsRate, 2)}
             change={previous && pointsChange(summary.savingsRate, previous.savingsRate, true)}
             formatChange={(n) => `${n.toFixed(1)} pts`}
             comparisonLabel={vs}
@@ -158,10 +166,12 @@ export function ReportsPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Section
             title="Recurring payments"
-            subtitle="Charged once a month at a similar amount"
+            subtitle={report.recurringAvailable ? 'Charged once a month at a similar amount' : 'Detected per calendar month'}
             action={<span className="text-sm font-medium tabular">{formatCents(report.recurringTotal)}</span>}
           >
-            {report.recurring.length === 0 ? (
+            {!report.recurringAvailable ? (
+              <p className="py-6 text-center text-sm text-ink-faint">Recurring payments are found per calendar month. Switch to Calendar month to see them.</p>
+            ) : report.recurring.length === 0 ? (
               <p className="py-6 text-center text-sm text-ink-faint">None found for this month.</p>
             ) : (
               <ul className="divide-y divide-navy-600/40">
@@ -181,7 +191,10 @@ export function ReportsPage() {
             )}
           </Section>
 
-          <Section title="Recent months" subtitle="How this month compares">
+          <Section
+            title={report.kind === 'month' ? 'Recent months' : 'Months in this period'}
+            subtitle={report.kind === 'month' ? 'How this month compares' : 'Only days inside your period are counted'}
+          >
             <div className="relative -mx-6 overflow-x-auto px-6">
               <table className="w-full min-w-[26rem] text-sm">
                 <thead>
@@ -195,10 +208,10 @@ export function ReportsPage() {
                 </thead>
                 <tbody>
                   {report.history.map((h) => (
-                    <tr key={h.month} className={`border-b border-navy-600/30 last:border-0 ${h.month === month ? 'font-medium' : 'text-ink-muted'}`}>
+                    <tr key={h.month} className={`border-b border-navy-600/30 last:border-0 ${report.kind === 'custom' || h.month === report.month ? 'font-medium' : 'text-ink-muted'}`}>
                       <td className="py-2.5 pr-3">
                         {formatMonth(h.month, 'short')}
-                        {report.comparison.isPartial && h.month === month && <span className="text-xs text-ink-faint"> (to date)</span>}
+                        {report.kind === 'month' && report.comparison.isPartial && h.month === report.month && <span className="text-xs text-ink-faint"> (to date)</span>}
                       </td>
                       <td className="py-2.5 pr-3 text-right tabular">{formatCents(h.income)}</td>
                       <td className="py-2.5 pr-3 text-right tabular">{formatCents(h.expenses)}</td>
@@ -211,6 +224,43 @@ export function ReportsPage() {
             </div>
           </Section>
         </div>
+
+        {report.balanceChecks.length > 0 && (
+          <Section title="Balance check" subtitle="Opening + income − expenses ± transfers = expected closing. Only a user-provided opening can be verified.">
+            <div className="relative -mx-6 overflow-x-auto px-6">
+              <table className="w-full min-w-[48rem] text-sm">
+                <thead>
+                  <tr className="border-b border-navy-600/60 text-left text-xs text-ink-faint">
+                    <th className="py-2 pr-3 font-normal">Account</th>
+                    <th className="py-2 pr-3 font-normal">Opening source</th>
+                    {['Opening', 'Income', 'Expenses', 'Transfers', 'Expected', 'Actual', 'Difference'].map((h) => (
+                      <th key={h} className="py-2 pr-3 text-right font-normal last:pr-0">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.balanceChecks.map((r) => (
+                    <tr key={r.accountId} className="border-b border-navy-600/30 last:border-0">
+                      <td className="py-2.5 pr-3">{r.accountName}</td>
+                      <td className={`py-2.5 pr-3 text-xs ${r.openingSource === 'user' ? 'text-positive' : 'text-warning'}`}>{OPENING_SOURCE_LABEL[r.openingSource!]}</td>
+                      <td className="py-2.5 pr-3 text-right tabular">{formatCents(r.opening!)}</td>
+                      <td className="py-2.5 pr-3 text-right tabular">{formatCents(r.income)}</td>
+                      <td className="py-2.5 pr-3 text-right tabular">{formatCents(r.expenses)}</td>
+                      <td className="py-2.5 pr-3 text-right tabular">{formatCents(r.transfersIn - r.transfersOut, { signed: true })}</td>
+                      <td className="py-2.5 pr-3 text-right font-medium tabular">{formatCents(r.expectedClosing!)}</td>
+                      <td className="py-2.5 pr-3 text-right tabular">{r.actualClosing === null ? '—' : formatCents(r.actualClosing)}</td>
+                      <td className={`py-2.5 text-right tabular ${r.difference === null || !r.verified ? 'text-ink-faint' : r.difference ? 'text-warning' : 'text-positive'}`}>
+                        {r.difference === null ? '—' : !r.verified ? `${formatCents(r.difference, { signed: true })} (not verified)` : r.difference === 0 ? 'Balanced' : formatCents(r.difference, { signed: true })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        )}
       </div>
     </>
   )

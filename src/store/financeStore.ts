@@ -5,9 +5,13 @@ import { categorizeAll } from '../lib/categorize/categorize'
 import type { Account } from '../types/account'
 import type { ImportRecord, SavedMapping } from '../types/import'
 import type { SubscriptionDecision, SubscriptionStatus } from '../lib/recurring/subscriptions'
-import type { Category, CategoryRule, Transaction } from '../types/transaction'
+import type { Category, CategoryRule, DeletedTransaction, Transaction, TransactionInput } from '../types/transaction'
+export type { TransactionInput } from '../types/transaction'
+import type { Budget } from '../types/budget'
+import { importFingerprint } from '../lib/csv/duplicates'
 import type { WealthEntry, WealthItem, WealthType } from '../types/wealth'
 import type { ISODate } from '../lib/dates'
+import type { BalancePoint } from '../types/balance'
 import type { Cents } from '../lib/money'
 
 /**
@@ -32,8 +36,18 @@ interface FinanceState {
   subscriptionDecisions: SubscriptionDecision[]
   wealthItems: WealthItem[]
   wealthEntries: WealthEntry[]
+  balancePoints: BalancePoint[]
+  deletedTransactions: DeletedTransaction[]
+  budgets: Budget[]
 
   load: () => Promise<void>
+  /** Adds a transaction by hand, to an existing account or a new one. */
+  addTransaction: (input: TransactionInput) => Promise<string>
+  /** Changes a transaction's details. Totals everywhere recalculate from the saved result. */
+  updateTransaction: (transactionId: string, input: TransactionInput) => Promise<void>
+  deleteTransaction: (transactionId: string) => Promise<void>
+  /** Sets a category's monthly budget; null removes it. */
+  setBudget: (category: Category, amount: Cents | null) => Promise<void>
   commitImport: (input: repository.CommitImportInput) => Promise<void>
   removeImport: (importId: string) => Promise<void>
   deleteAllData: () => Promise<void>
@@ -51,6 +65,18 @@ interface FinanceState {
   /** Records values for several items on one date (replacing any already recorded that day). */
   updateWealthValues: (date: ISODate, values: { itemId: string; value: Cents }[]) => Promise<void>
   deleteWealthItem: (itemId: string) => Promise<void>
+  /**
+   * Saves what an account held at the START of `date` (null clears it).
+   * An opening balance for a period starting Nov 22 is the start of Nov 22;
+   * a closing balance for a period ending Dec 22 is the start of Dec 23.
+   */
+  setBalancePoint: (accountId: string, date: ISODate, amount: Cents | null) => Promise<void>
+}
+
+/** Applies the form's category choice: a chosen category is manual; 'auto' hands it back to automatic categorisation. */
+function withCategory(tx: Transaction, category: Category | 'auto'): Transaction {
+  if (category === 'auto') return { ...tx, categorySource: undefined, categoryNote: undefined }
+  return { ...tx, category, categorySource: 'manual', categoryNote: 'Set by you' }
 }
 
 /** Re-categorises and returns only the transactions whose category changed. */
@@ -70,6 +96,9 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
   subscriptionDecisions: [],
   wealthItems: [],
   wealthEntries: [],
+  balancePoints: [],
+  deletedTransactions: [],
+  budgets: [],
 
   load: async () => {
     try {
@@ -110,6 +139,55 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
     await get().load()
   },
 
+  addTransaction: async (input) => {
+    const newAccount = 'name' in input.account ? { id: crypto.randomUUID(), name: input.account.name.trim(), type: input.account.type } : null
+    const transaction = withCategory(
+      {
+        id: crypto.randomUUID(),
+        date: input.date,
+        description: input.description.trim(),
+        amount: input.amount,
+        category: 'Other', // replaced by automatic categorisation on load, unless chosen
+        accountId: newAccount?.id ?? ('id' in input.account ? input.account.id : undefined),
+      },
+      input.category,
+    )
+    await repository.saveTransaction(transaction, newAccount)
+    await get().load()
+    return transaction.id
+  },
+
+  updateTransaction: async (transactionId, input) => {
+    const tx = get().transactions.find((t) => t.id === transactionId)
+    if (!tx) return
+    const newAccount = 'name' in input.account ? { id: crypto.randomUUID(), name: input.account.name.trim(), type: input.account.type } : null
+    const updated = withCategory(
+      {
+        ...tx,
+        date: input.date,
+        description: input.description.trim(),
+        amount: input.amount,
+        accountId: newAccount?.id ?? ('id' in input.account ? input.account.id : tx.accountId),
+        // Freeze the bank's original row the first time an imported transaction is edited,
+        // so re-importing the same statement still recognises it.
+        importKey: tx.importKey ?? (tx.importId ? importFingerprint(tx) : undefined),
+      },
+      input.category,
+    )
+    await repository.saveTransaction(updated, newAccount)
+    await get().load()
+  },
+
+  deleteTransaction: async (transactionId) => {
+    await repository.deleteTransactions([transactionId])
+    await get().load()
+  },
+
+  setBudget: async (category, amount) => {
+    await repository.saveBudget(category, amount)
+    await get().load()
+  },
+
   setCategory: async (transactionId, category) => {
     const tx = get().transactions.find((t) => t.id === transactionId)
     if (!tx) return
@@ -141,6 +219,11 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
 
   updateWealthValues: async (date, values) => {
     await repository.saveWealth([], values.map(({ itemId, value }) => ({ id: `${itemId}:${date}`, itemId, date, value })))
+    await get().load()
+  },
+
+  setBalancePoint: async (accountId, date, amount) => {
+    await repository.saveBalancePoint(accountId, date, amount)
     await get().load()
   },
 

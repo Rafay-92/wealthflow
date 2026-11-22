@@ -2,7 +2,7 @@ import { expect, test as base, type Page } from '@playwright/test'
 import path from 'node:path'
 
 export const SAMPLES = path.join(process.cwd(), 'public', 'sample-data')
-export const PAGES = ['/', '/upload', '/transactions', '/analytics', '/insights', '/reports', '/subscriptions', '/wealth', '/settings']
+export const PAGES = ['/', '/upload', '/transactions', '/analytics', '/budgets', '/insights', '/reports', '/subscriptions', '/wealth', '/settings']
 
 /**
  * Every test automatically fails if the page logs an error, throws, or the

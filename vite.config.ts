@@ -1,5 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
 
@@ -40,6 +42,14 @@ function contentSecurityPolicy(): Plugin {
 // which reuses this same config so tests see code exactly as the app does.
 export default defineConfig({
   plugins: [react(), tailwindcss(), contentSecurityPolicy()],
+  // Vite's working cache lives OUTSIDE the project: this folder is synced by
+  // OneDrive, and OneDrive locking cache files mid-rewrite can break pages.
+  cacheDir: join(tmpdir(), 'wealthflow-vite-cache'),
+  // Prepare every library up front, so the dev server never has to rebuild its
+  // cache in the middle of a session (which can break pages already open).
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-dom/client', 'react-router', 'recharts', 'dexie', 'zustand', 'lucide-react', 'papaparse', 'jspdf', 'jspdf-autotable'],
+  },
   build: {
     rolldownOptions: {
       output: {

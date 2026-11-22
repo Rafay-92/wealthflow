@@ -19,6 +19,7 @@ const PAGES: Record<string, ComponentType> = {
   '/upload': lazyPage(() => import('./pages/UploadPage'), 'UploadPage'),
   '/transactions': lazyPage(() => import('./pages/TransactionsPage'), 'TransactionsPage'),
   '/analytics': lazyPage(() => import('./pages/AnalyticsPage'), 'AnalyticsPage'),
+  '/budgets': lazyPage(() => import('./pages/BudgetsPage'), 'BudgetsPage'),
   '/insights': lazyPage(() => import('./pages/InsightsPage'), 'InsightsPage'),
   '/reports': lazyPage(() => import('./pages/ReportsPage'), 'ReportsPage'),
   '/subscriptions': lazyPage(() => import('./pages/SubscriptionsPage'), 'SubscriptionsPage'),

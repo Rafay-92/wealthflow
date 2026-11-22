@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { CategoryMonth } from '../../lib/analytics/analytics'
-import { formatMonth, type MonthKey } from '../../lib/dates'
+import { formatBucket, type Granularity } from '../../lib/analytics/granularity'
 import { formatCents, formatCentsCompact } from '../../lib/money'
 import type { Category } from '../../types/transaction'
 import { TooltipFrame, TooltipRow } from './ChartTooltip'
@@ -11,10 +11,12 @@ interface CategoryTrendChartProps {
   data: readonly CategoryMonth[]
   /** Marks the last month as month-to-date, e.g. "Nov 20". */
   partialThrough?: string
+  /** What each bar covers. Default: a month. */
+  granularity?: Granularity
 }
 
 /** One category's spending per month: a single series, so no legend (the title names it). */
-export function CategoryTrendChart({ category, data, partialThrough }: CategoryTrendChartProps) {
+export function CategoryTrendChart({ category, data, partialThrough, granularity = 'month' }: CategoryTrendChartProps) {
   const last = data.at(-1)?.month
   const average = data.length > 0 ? data.reduce((s, d) => s + d.amount, 0) / data.length : 0
 
@@ -26,7 +28,7 @@ export function CategoryTrendChart({ category, data, partialThrough }: CategoryT
             <CartesianGrid vertical={false} stroke={GRID_STROKE} />
             <XAxis
               dataKey="month"
-              tickFormatter={(m: MonthKey) => formatMonth(m, 'short') + (partialThrough && m === last ? '*' : '')}
+              tickFormatter={(m: string) => formatBucket(m, granularity) + (partialThrough && m === last ? '*' : '')}
               tickLine={false}
               axisLine={AXIS_LINE}
               tick={AXIS_TICK}
@@ -39,7 +41,7 @@ export function CategoryTrendChart({ category, data, partialThrough }: CategoryT
                 const row = payload?.[0]?.payload as CategoryMonth | undefined
                 if (!active || !row) return null
                 return (
-                  <TooltipFrame title={formatMonth(row.month) + (partialThrough && row.month === last ? ` · to ${partialThrough}` : '')}>
+                  <TooltipFrame title={formatBucket(row.month, granularity, 'long') + (partialThrough && row.month === last ? ` · to ${partialThrough}` : '')}>
                     <TooltipRow label={category} value={formatCents(row.amount)} color="var(--color-series-expense)" />
                   </TooltipFrame>
                 )
@@ -50,15 +52,15 @@ export function CategoryTrendChart({ category, data, partialThrough }: CategoryT
         </ResponsiveContainer>
       </div>
       <p className="mt-3 text-xs text-ink-faint">
-        Average {formatCents(Math.round(average))} a month
-        {partialThrough && ` · * month to date, through ${partialThrough}`}
+        Average {formatCents(Math.round(average))} a {granularity}
+        {partialThrough && ` · * ${granularity} to date, through ${partialThrough}`}
       </p>
       <table className="sr-only">
-        <caption>{category} spending by month</caption>
+        <caption>{category} spending by {granularity}</caption>
         <tbody>
           {data.map((d) => (
             <tr key={d.month}>
-              <td>{formatMonth(d.month)}</td>
+              <td>{formatBucket(d.month, granularity, 'long')}</td>
               <td>{formatCents(d.amount)}</td>
             </tr>
           ))}

@@ -1,8 +1,11 @@
-import { CheckCircle2, RotateCcw, Search, X } from 'lucide-react'
+import { CheckCircle2, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { CategorySelect } from '../components/transactions/CategorySelect'
 import { RuleSuggestion } from '../components/transactions/RuleSuggestion'
 import { RulesPanel } from '../components/transactions/RulesPanel'
+import { TransactionForm } from '../components/transactions/TransactionForm'
+import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { fieldClass } from '../components/ui/fieldClass'
@@ -10,18 +13,23 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { SampleDataNotice } from '../components/ui/SampleDataNotice'
 import { isTransfer } from '../lib/analytics/summary'
 import { suggestKeyword } from '../lib/categorize/text'
-import { formatDay, formatMonth } from '../lib/dates'
+import { formatDay, formatMonth, todayISO } from '../lib/dates'
 import { formatCents, sumCents } from '../lib/money'
 import {
   availableMonths,
   filterTransactions,
+  merchantNames,
   needsReview,
   NO_FILTERS,
-  sortNewestFirst,
+  SORT_OPTIONS,
+  sortTransactions,
+  TRANSACTION_TYPES,
   type TransactionFilters,
+  type TransactionSort,
+  type TransactionType,
 } from '../lib/transactions'
 import { useDisplayData, useFinanceStore } from '../store/financeStore'
-import { CATEGORIES, type Category, type CategoryRule, type Transaction } from '../types/transaction'
+import { CATEGORIES, type Category, type CategoryRule, type Transaction, type TransactionInput } from '../types/transaction'
 
 const PAGE_SIZE = 100
 
@@ -32,16 +40,34 @@ export function TransactionsPage() {
   const resetCategory = useFinanceStore((s) => s.resetCategory)
   const addRule = useFinanceStore((s) => s.addRule)
   const deleteRule = useFinanceStore((s) => s.deleteRule)
+  const savedAccounts = useFinanceStore((s) => s.accounts)
+  const addTransaction = useFinanceStore((s) => s.addTransaction)
+  const updateTransaction = useFinanceStore((s) => s.updateTransaction)
+  const deleteTransaction = useFinanceStore((s) => s.deleteTransaction)
 
-  const [filters, setFilters] = useState<TransactionFilters>(NO_FILTERS)
+  // Links (e.g. from the Dashboard) can open this page pre-filtered:
+  // ?month=2026-10&account=chk, or ?from=2026-11-22&to=2026-12-22
+  const [searchParams] = useSearchParams()
+  const [filters, setFilters] = useState<TransactionFilters>(() => ({
+    ...NO_FILTERS,
+    month: searchParams.get('month') ?? 'all',
+    accountId: searchParams.get('account') ?? 'all',
+    dateFrom: searchParams.get('from') ?? '',
+    dateTo: searchParams.get('to') ?? '',
+  }))
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [busy, setBusy] = useState(false)
   const [suggestion, setSuggestion] = useState<{ tx: Transaction; category: Category } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [ruleToDelete, setRuleToDelete] = useState<CategoryRule | null>(null)
+  const [sort, setSort] = useState<TransactionSort>('date-desc')
+  const [moreFilters, setMoreFilters] = useState(() => searchParams.has('from') || searchParams.has('to'))
+  /** The transaction being edited; null = adding a new one; undefined = form closed. */
+  const [editing, setEditing] = useState<Transaction | null | undefined>(undefined)
 
   const months = useMemo(() => availableMonths(transactions), [transactions])
-  const sorted = useMemo(() => sortNewestFirst(transactions), [transactions])
+  const merchants = useMemo(() => merchantNames(transactions), [transactions])
+  const sorted = useMemo(() => sortTransactions(transactions, sort), [transactions, sort])
   const filtered = useMemo(() => filterTransactions(sorted, filters), [sorted, filters])
   const reviewCount = useMemo(() => transactions.filter(needsReview).length, [transactions])
 
@@ -75,6 +101,18 @@ export function TransactionsPage() {
     })
   }
 
+  /** Saves the add/edit form. A category picked by hand offers a rule for the merchant's future transactions. */
+  async function saveForm(input: TransactionInput) {
+    setNotice(null)
+    const before = editing
+    let id = before?.id
+    if (before) await updateTransaction(before.id, input)
+    else id = await addTransaction(input)
+    const saved = useFinanceStore.getState().transactions.find((t) => t.id === id)
+    if (saved && input.category !== 'auto' && input.category !== before?.category) setSuggestion({ tx: saved, category: input.category })
+    setNotice(before ? 'Transaction saved. Every total has been updated.' : 'Transaction added. Every total has been updated.')
+  }
+
   function createRule(keyword: string, category: Category) {
     void run(async () => {
       await addRule(keyword, category)
@@ -89,7 +127,12 @@ export function TransactionsPage() {
     <>
       <PageHeader
         title="Transactions"
-        description={`${transactions.length.toLocaleString()} transactions. Change any category, or teach WealthFlow with rules.`}
+        description={`${transactions.length.toLocaleString()} transactions. Add, edit or delete any of them, change categories, or teach WealthFlow with rules.`}
+        actions={
+          <Button variant="primary" onClick={() => setEditing(null)}>
+            <Plus aria-hidden className="size-4" /> Add transaction
+          </Button>
+        }
       />
 
       {isSample && <SampleDataNotice />}
@@ -143,8 +186,60 @@ export function TransactionsPage() {
           >
             Needs review · {reviewCount}
           </button>
+          <button
+            type="button"
+            aria-expanded={moreFilters}
+            aria-controls="more-filters"
+            onClick={() => setMoreFilters((v) => !v)}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-navy-600 px-3 py-2 text-sm whitespace-nowrap text-ink-muted transition-colors hover:border-ink-faint hover:text-ink"
+          >
+            <SlidersHorizontal aria-hidden className="size-4" /> More
+          </button>
         </div>
       </Card>
+
+      {moreFilters && (
+        <Card id="more-filters" className="-mt-2 mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-5">
+          <label className="flex flex-col gap-1 text-xs text-ink-faint">
+            Type
+            <select value={filters.type} onChange={(e) => update({ type: e.target.value as TransactionType | 'all' })} className={fieldClass}>
+              <option value="all">All types</option>
+              {TRANSACTION_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-faint">
+            Merchant
+            <input list="merchant-names" value={filters.merchant} onChange={(e) => update({ merchant: e.target.value })} placeholder="Any merchant" className={fieldClass} />
+            <datalist id="merchant-names">
+              {merchants.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-faint">
+            From
+            <input type="date" value={filters.dateFrom} max={filters.dateTo || undefined} onChange={(e) => update({ dateFrom: e.target.value })} className={fieldClass} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-faint">
+            To
+            <input type="date" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={(e) => update({ dateTo: e.target.value })} className={fieldClass} />
+          </label>
+          <label className="col-span-2 flex flex-col gap-1 text-xs text-ink-faint lg:col-span-1">
+            Sort
+            <select value={sort} onChange={(e) => setSort(e.target.value as TransactionSort)} className={fieldClass}>
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </Card>
+      )}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1 text-sm">
         <p className="text-ink-faint">
@@ -171,7 +266,7 @@ export function TransactionsPage() {
         ) : (
           <ul className="divide-y divide-navy-600/30">
             {filtered.slice(0, limit).map((tx) => (
-              <li key={tx.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 sm:grid-cols-[3.5rem_minmax(0,1fr)_13rem_7rem]">
+              <li key={tx.id} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 sm:grid-cols-[3.5rem_minmax(0,1fr)_15rem_7rem]">
                 <span className="text-sm text-ink-faint tabular">{formatDay(tx.date)}</span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{tx.description}</p>
@@ -197,6 +292,18 @@ export function TransactionsPage() {
                     </button>
                   ) : (
                     <span className="w-[26px]" aria-hidden />
+                  )}
+                  {!isSample && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(tx)}
+                      disabled={busy}
+                      title="Edit or delete"
+                      aria-label={`Edit ${tx.description}`}
+                      className="rounded-md p-1.5 text-ink-faint hover:bg-navy-700 hover:text-ink"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
                   )}
                 </div>
               </li>
@@ -233,6 +340,26 @@ export function TransactionsPage() {
         />
         {isSample && <p className="mt-3 text-xs text-ink-faint">Sample data is read-only. Import your own statements to edit categories and rules.</p>}
       </Card>
+
+      {editing !== undefined && (
+        <TransactionForm
+          key={editing?.id ?? 'new'}
+          transaction={editing}
+          accounts={savedAccounts}
+          defaults={{ date: todayISO(), accountId: filters.accountId !== 'all' && savedAccounts.some((a) => a.id === filters.accountId) ? filters.accountId : '' }}
+          onSave={saveForm}
+          onDelete={
+            editing
+              ? async () => {
+                  await deleteTransaction(editing.id)
+                  setSuggestion(null)
+                  setNotice('Transaction deleted. Every total has been updated.')
+                }
+              : undefined
+          }
+          onClose={() => setEditing(undefined)}
+        />
+      )}
 
       <ConfirmDialog
         open={ruleToDelete !== null}
