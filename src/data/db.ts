@@ -6,6 +6,7 @@ import type { CategoryRule, DeletedTransaction, Transaction } from '../types/tra
 import type { Budget } from '../types/budget'
 import type { WealthEntry, WealthItem } from '../types/wealth'
 import { pointsFromMonthlyBalances, type BalancePoint, type MonthlyBalance } from '../types/balance'
+import type { StatementBalance } from '../lib/balances/checkpoints'
 
 /**
  * The on-device database (IndexedDB, via the Dexie library).
@@ -30,6 +31,7 @@ export class WealthFlowDB extends Dexie {
   wealthItems!: EntityTable<WealthItem, 'id'>
   wealthEntries!: EntityTable<WealthEntry, 'id'>
   balancePoints!: EntityTable<BalancePoint, 'id'>
+  statementBalances!: EntityTable<StatementBalance, 'id'>
   deletedTransactions!: EntityTable<DeletedTransaction, 'id'>
   budgets!: EntityTable<Budget, 'category'>
 
@@ -77,6 +79,11 @@ export class WealthFlowDB extends Dexie {
         const latest = (await tx.table('transactions').orderBy('date').last()) as { date: string } | undefined
         await tx.table('balancePoints').bulkPut(pointsFromMonthlyBalances(old, latest?.date ?? null))
       })
+    // Running balances from statements, as daily checkpoints for reconciliation.
+    // A new, empty table: nothing existing is changed.
+    this.version(8).stores({
+      statementBalances: 'id, accountId, date, importId',
+    })
   }
 }
 

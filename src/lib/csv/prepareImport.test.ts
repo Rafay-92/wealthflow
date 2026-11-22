@@ -49,6 +49,7 @@ describe('import pipeline', () => {
       category: 'Income',
       accountId: 'chk',
       importId: 'imp1',
+      runningBalance: expect.any(Number), // the bank's balance after this row: kept for reference, never a total
     })
     expect(transactions[1]!.category).toBe('Other')
   })

@@ -1,5 +1,6 @@
 import type { Account } from '../../types/account'
 import type { BalancePoint } from '../../types/balance'
+import type { StatementBalance } from '../balances/checkpoints'
 import type { Transaction } from '../../types/transaction'
 import { addDays, type ISODate } from '../dates'
 import { sumCents, type Cents } from '../money'
@@ -59,6 +60,7 @@ export function accountBalances(
   accounts: readonly Account[],
   transactions: readonly Transaction[],
   points: readonly BalancePoint[] = [],
+  checkpoints: readonly StatementBalance[] = [],
 ): AccountBalance[] {
   const out: AccountBalance[] = []
   for (const account of accounts) {
@@ -66,6 +68,7 @@ export function accountBalances(
     if (account.balance !== undefined && account.balanceAsOf) {
       anchors.push({ countFrom: addDays(account.balanceAsOf, 1), balance: account.balance, basis: 'bank' })
     }
+    for (const c of checkpoints) if (c.accountId === account.id) anchors.push({ countFrom: c.date, balance: c.amount, basis: 'bank' })
     for (const p of points) if (p.accountId === account.id) anchors.push({ countFrom: p.date, balance: p.amount, basis: 'user' })
     // Latest anchor wins. On the same date, the balance you typed wins,
     // just as it does in the Balance check.

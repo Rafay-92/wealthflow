@@ -16,6 +16,7 @@ import { addDays, formatDay, type ISODate } from '../../lib/dates'
 import { formatCents, parseAmountToCents, type Cents } from '../../lib/money'
 import type { Account } from '../../types/account'
 import type { BalancePoint } from '../../types/balance'
+import type { StatementBalance } from '../../lib/balances/checkpoints'
 import type { Transaction } from '../../types/transaction'
 import { Button } from '../ui/Button'
 import { fieldClass } from '../ui/fieldClass'
@@ -31,11 +32,14 @@ interface BalanceCheckProps {
   accounts: readonly Account[]
   period: ResolvedPeriod
   points: readonly BalancePoint[]
+  /** Running balances from your statements. */
+  checkpoints?: readonly StatementBalance[]
   onSave: (accountId: string, values: BalanceValues) => Promise<void>
 }
 
 const SOURCE_BADGE: Record<OpeningSource | 'unknown', string> = {
   user: 'bg-positive-soft text-positive',
+  reported: 'bg-positive-soft text-positive',
   inferred: 'bg-warning-soft text-warning',
   estimated: 'bg-warning-soft text-warning',
   unknown: 'bg-navy-700 text-ink-muted',
@@ -54,12 +58,12 @@ function SourceBadge({ source }: { source: OpeningSource | null }) {
  * for the period on screen (a calendar month or a custom range).
  * One card per bank account (chequing/savings), plus a combined total.
  */
-export function BalanceCheck({ transactions, accounts, period, points, onSave }: BalanceCheckProps) {
+export function BalanceCheck({ transactions, accounts, period, points, checkpoints = [], onSave }: BalanceCheckProps) {
   const bankAccounts = accounts.filter(isBankAccount)
   if (bankAccounts.length === 0) {
     return <p className="py-6 text-center text-sm text-ink-faint">Import a chequing or savings statement to check its balance.</p>
   }
-  const items = bankAccounts.map((a) => reconcileAccount(transactions, a, period, points))
+  const items = bankAccounts.map((a) => reconcileAccount(transactions, a, period, points, checkpoints))
   const combined = combineReconciliations(items)
 
   return (
@@ -73,7 +77,7 @@ export function BalanceCheck({ transactions, accounts, period, points, onSave }:
           <p className="mb-3 text-xs text-ink-faint">
             {combined.accountCount} of {items.length} accounts included
             {combined.missingOpening.length > 0 && ` · add an opening balance for ${combined.missingOpening.join(', ')} to include it`}
-            {combined.accountCount > 0 && !combined.allOpeningsProvided && ' · some opening balances are inferred or estimated, not verified'}
+            {combined.accountCount > 0 && !combined.allOpeningsProvided && ' · some opening balances are inferred or estimated, not actual'}
           </p>
           {combined.accountCount > 0 && (
             <dl className="text-sm">
@@ -150,9 +154,21 @@ function AccountCard({ item, period, onSave }: { item: AccountReconciliation; pe
               />
             )}
             <Line label={`= Expected closing (${asOf})`} value={item.expectedClosing!} strong />
-            <Line label="Actual closing (bank statement)" value={item.actualClosing} placeholder="Not entered" />
+            <Line
+              label={item.closingSource === 'reported' ? 'Bank-reported closing' : 'Actual closing (bank statement)'}
+              value={item.actualClosing}
+              placeholder="Not entered"
+              hint={item.closingSource === 'reported' ? 'From your statement’s running balance' : item.closingSource === 'user' ? 'You entered it' : undefined}
+            />
           </dl>
-          {item.openingSource !== 'user' && item.actualClosing === null && (
+          {item.checkpointsChecked > 0 && (
+            <p className={`mt-2 text-xs ${item.mismatches.length > 0 ? 'text-warning' : 'text-ink-faint'}`} data-testid="checkpoint-summary">
+              {item.mismatches.length === 0
+                ? `Checked against ${item.checkpointsChecked} daily balances from your statement: all match.`
+                : `${item.mismatches.length} of ${item.checkpointsChecked} daily bank balances don’t match: first on ${formatDay(item.mismatches[0]!.date)} (bank ${formatCents(item.mismatches[0]!.reported)}, calculated ${formatCents(item.mismatches[0]!.calculated)}).`}
+            </p>
+          )}
+          {item.openingSource !== 'user' && item.openingSource !== 'reported' && item.actualClosing === null && (
             <p className="mt-3 flex items-start gap-2 text-xs text-ink-faint">
               <HelpCircle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
               This expected closing is built on a balance that isn’t verified. Enter your actual opening balance to rely on it.

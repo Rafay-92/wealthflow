@@ -13,6 +13,7 @@ const empty: StoredData = {
   wealthItems: [],
   wealthEntries: [],
   balancePoints: [],
+  statementBalances: [],
   deletedTransactions: [],
   budgets: [],
 }
@@ -21,7 +22,7 @@ describe('createBackup', () => {
   it('includes every table plus a header, and survives a JSON round trip', () => {
     const data: StoredData = { ...empty, transactions: [tx({ id: 'a' })], accounts: [{ id: 'chk', name: 'Checking', type: 'checking' }] }
     const backup = createBackup(data, new Date('2026-11-21T10:00:00Z'))
-    expect(backup).toMatchObject({ app: 'WealthFlow', formatVersion: 4, exportedAt: '2026-11-21T10:00:00.000Z' })
+    expect(backup).toMatchObject({ app: 'WealthFlow', formatVersion: 5, exportedAt: '2026-11-21T10:00:00.000Z' })
     for (const key of Object.keys(empty)) expect(backup).toHaveProperty(key)
     expect(JSON.parse(JSON.stringify(backup))).toEqual(backup)
   })

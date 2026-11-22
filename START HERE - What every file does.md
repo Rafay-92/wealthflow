@@ -73,7 +73,7 @@ Many file names are **required by the tools** that build and run the app. For ex
 | **`data`** | Saving and loading your data in the browser, plus the fictional sample data |
 | **`store`** | Keeps the latest data in memory so every page shows the same numbers |
 | **`types`** | Descriptions of what each kind of data looks like (a transaction, an account…) |
-| **`hooks`** | A small helper that pages use to get insights |
+| **`hooks`** | Small helpers pages share: insights, and the selected period (remembered across Dashboard, Analytics and Reports) |
 | **`test`** | Helpers used only by the automatic checks |
 
 ### `src/pages`: one file per screen
@@ -119,7 +119,7 @@ Many file names are **required by the tools** that build and run the app. For ex
 | `transactions.ts` | Transaction types (income, expense, refund, transfer), sorting, searching and filtering |
 | `transactionForm.ts` | Checking what you type in the add/edit form |
 | `budgets` | Budget vs actual spending |
-| `balances` | The balance check (opening + income − expenses = expected closing), and where each opening balance comes from (user-provided, inferred, estimated or unknown) |
+| `balances` | Running balances from statements (`checkpoints.ts`), and the balance check (opening + income − expenses = expected closing), and where each opening balance comes from (user-provided, inferred, estimated or unknown) |
 | `backup.ts` | Creating and checking backup files |
 | `csv` | Reading bank statement files: finding columns, dates, amounts, duplicates |
 | `categorize` | Sorting transactions into categories, and spotting transfers between your accounts |

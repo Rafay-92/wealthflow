@@ -38,6 +38,7 @@ export function SettingsPage() {
     wealthItems: state.wealthItems,
     wealthEntries: state.wealthEntries,
     balancePoints: state.balancePoints,
+    statementBalances: state.statementBalances,
     deletedTransactions: state.deletedTransactions,
     budgets: state.budgets,
   }

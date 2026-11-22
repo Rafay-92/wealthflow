@@ -7,14 +7,15 @@ import { isCents } from './money'
 
 /**
  * 2 added monthlyBalances; 3 added deletedTransactions and budgets;
- * 4 replaced monthlyBalances with balancePoints (balances per date).
+ * 4 replaced monthlyBalances with balancePoints (balances per date);
+ * 5 added statementBalances (running balances from statements).
  * Older backups still restore: missing lists are empty, monthly balances are converted.
  */
-export const BACKUP_FORMAT_VERSION = 4
+export const BACKUP_FORMAT_VERSION = 5
 /** Larger than any realistic backup; anything bigger is refused before reading. */
 export const MAX_BACKUP_BYTES = 50 * 1024 * 1024
 
-const TABLES = ['transactions', 'accounts', 'imports', 'mappings', 'rules', 'subscriptionDecisions', 'wealthItems', 'wealthEntries', 'balancePoints', 'deletedTransactions', 'budgets'] as const
+const TABLES = ['transactions', 'accounts', 'imports', 'mappings', 'rules', 'subscriptionDecisions', 'wealthItems', 'wealthEntries', 'balancePoints', 'statementBalances', 'deletedTransactions', 'budgets'] as const
 
 export interface Backup extends StoredData {
   app: 'WealthFlow'
@@ -83,6 +84,7 @@ export function parseBackup(text: string): Backup | string {
     raw.deletedTransactions ??= []
     raw.budgets ??= []
   }
+  if (raw.formatVersion < 5) raw.statementBalances ??= []
   if (raw.formatVersion < 4) {
     const old = raw.monthlyBalances
     if (!Array.isArray(old) || !old.every(isObject)) return 'The backup’s “monthlyBalances” list is damaged.'
@@ -120,6 +122,11 @@ export function parseBackup(text: string): Backup | string {
   for (const [i, e] of (raw.wealthEntries as Record<string, unknown>[]).entries()) {
     if (typeof e.itemId !== 'string' || typeof e.date !== 'string' || !isISODate(e.date) || !isCents(e.value)) {
       return `Wealth value ${i + 1} in the backup is invalid, so nothing was restored.`
+    }
+  }
+  for (const [i, c] of (raw.statementBalances as Record<string, unknown>[]).entries()) {
+    if (typeof c.id !== 'string' || typeof c.accountId !== 'string' || typeof c.importId !== 'string' || typeof c.date !== 'string' || !isISODate(c.date) || !isCents(c.amount)) {
+      return `Statement balance ${i + 1} in the backup is invalid, so nothing was restored.`
     }
   }
   for (const [i, p] of (raw.balancePoints as Record<string, unknown>[]).entries()) {

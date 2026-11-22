@@ -4,6 +4,11 @@ import { CategoryComparison } from '../components/analytics/CategoryComparison'
 import { CategoryRanking } from '../components/analytics/CategoryRanking'
 import { GranularitySelect } from '../components/analytics/GranularitySelect'
 import { RangeSelect } from '../components/analytics/RangeSelect'
+import { DateRangePicker } from '../components/dashboard/DateRangePicker'
+import { usePeriod } from '../hooks/usePeriod'
+import { autoGranularity, ALL_GRANULARITIES } from '../lib/analytics/granularity'
+import { formatRange, presetAnchor, resolvePeriod } from '../lib/analytics/reportPeriod'
+import { availableMonths, latestDate } from '../lib/transactions'
 import { CategoryLabel } from '../components/CategoryLabel'
 import { CategoryTrendChart } from '../components/charts/CategoryTrendChart'
 import { IncomeExpenseChart } from '../components/charts/IncomeExpenseChart'
@@ -17,7 +22,7 @@ import { Section } from '../components/ui/Section'
 import { buildAnalytics, categoryByBucket, daysInPeriod, largestExpenses, MAX_QUARTERS, type RangePreset } from '../lib/analytics/analytics'
 import { formatBucket, GRANULARITIES, previousBucket, type Granularity } from '../lib/analytics/granularity'
 import type { Period } from '../lib/analytics/periods'
-import { formatDay, formatMonth } from '../lib/dates'
+import { formatDay, formatMonth, todayISO } from '../lib/dates'
 import { formatCents, formatPercent } from '../lib/money'
 import { useDisplayData } from '../store/financeStore'
 import type { Category } from '../types/transaction'
@@ -31,9 +36,17 @@ export function AnalyticsPage() {
   const { status, isSample, transactions, accounts } = useDisplayData()
   const [range, setRange] = useState<RangePreset>(6)
   const [picked, setPicked] = useState<Category | null>(null)
-  const [granularity, setGranularity] = useState<Granularity>('month')
-
-  const data = useMemo(() => buildAnalytics(transactions, range, granularity), [transactions, range, granularity])
+  // A custom range is shared with the Dashboard and Reports (remembered for this session).
+  const months = useMemo(() => availableMonths(transactions), [transactions])
+  const latest = useMemo(() => latestDate(transactions), [transactions])
+  const { selection, update, reset } = usePeriod(months)
+  const [custom, setCustom] = useState(() => selection?.kind === 'custom')
+  // A custom range starts with a grouping that suits its length (daily for a month).
+  const [granularity, setGranularity] = useState<Granularity>(() =>
+    selection?.kind === 'custom' ? autoGranularity(resolvePeriod(selection, latest).current) : 'month',
+  )
+  const customPeriod = useMemo(() => (custom && selection ? resolvePeriod(selection, latest) : null), [custom, selection, latest])
+  const data = useMemo(() => buildAnalytics(transactions, range, granularity, customPeriod?.requested), [transactions, range, granularity, customPeriod])
 
   // The selected category: your pick if it still has spending in this range, else the top one.
   const selected = data && (data.categories.find((c) => c.category === picked)?.category ?? data.categories[0]?.category ?? null)
@@ -73,38 +86,77 @@ export function AnalyticsPage() {
   const partialThrough = comparison.isPartial ? formatDay(comparison.current.end) : undefined
   const days = daysInPeriod(data.period)
   const monthCount = data.months.length
-  const noun = GRANULARITIES.find((g) => g.value === granularity)!.noun
+  const noun = ALL_GRANULARITIES.find((g) => g.value === granularity)!.noun
   const nouns = (n: number) => `${n} ${noun}${n === 1 ? '' : 's'}`
   const bucketCount = data.monthly.length
   const partialRange = (p: Period) => `${formatDay(p.start)} – ${formatDay(p.end)}`
-  const currentLabel =
-    granularity === 'month'
+  const currentLabel = customPeriod
+    ? formatRange(comparison.current)
+    : granularity === 'month'
       ? comparison.isPartial
         ? `${formatMonth(data.months.at(-1)!, 'short')} 1–${Number(comparison.current.end.slice(8))}`
         : formatMonth(data.months.at(-1)!, 'short')
       : comparison.isPartial
         ? `${formatBucket(comparison.month, granularity)} (${partialRange(comparison.current)})`
         : formatBucket(comparison.month, granularity)
-  const previousLabel =
-    granularity === 'month'
+  const previousLabel = customPeriod
+    ? formatRange(comparison.previous)
+    : granularity === 'month'
       ? comparison.isPartial
         ? `${formatMonth(comparison.previous.start.slice(0, 7), 'short')} 1–${Number(comparison.previous.end.slice(8))}`
         : formatMonth(comparison.previous.start.slice(0, 7), 'short')
       : comparison.isPartial
         ? `${formatBucket(previousBucket(comparison.month, granularity), granularity)} (${partialRange(comparison.previous)})`
         : formatBucket(previousBucket(comparison.month, granularity), granularity)
-  const overTitle = `${noun[0]!.toUpperCase()}${noun.slice(1)} over ${noun}`
+  const overTitle = customPeriod ? 'Period over period' : `${noun[0]!.toUpperCase()}${noun.slice(1)} over ${noun}`
   const accountName = (id?: string) => accounts.find((a) => a.id === id)?.name
 
   return (
     <>
       <PageHeader
         title="Analytics"
-        description={`${describePeriod(data.period)} · ${days} days of data`}
+        description={`${customPeriod ? 'Custom period' : 'Recent months'} · ${describePeriod(data.period)} · ${days} days of data`}
         actions={
           <>
-            <GranularitySelect value={granularity} onChange={setGranularity} />
-            {granularity === 'month' && <RangeSelect value={range} onChange={setRange} />}
+            <GranularitySelect
+              value={granularity}
+              onChange={setGranularity}
+              options={customPeriod ? ALL_GRANULARITIES.filter((g) => (g.value !== 'day' || days <= 120) && (g.value !== 'week' || days <= 730)) : GRANULARITIES}
+            />
+            {!customPeriod && granularity === 'month' && <RangeSelect value={range} onChange={setRange} />}
+            <button
+              type="button"
+              aria-pressed={custom}
+              onClick={() => {
+                const next = !custom
+                setCustom(next)
+                if (next && selection) {
+                  setGranularity(autoGranularity(resolvePeriod(selection, latest).current))
+                  if (selection.kind === 'month') update({ selection: { kind: 'custom', ...resolvePeriod(selection, latest).current } })
+                } else setGranularity('month')
+              }}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${custom ? 'border-positive/60 bg-positive-soft text-positive' : 'border-navy-600 text-ink-muted hover:text-ink'}`}
+            >
+              Custom range
+            </button>
+            {customPeriod && selection && (
+              <DateRangePicker
+                key={`${customPeriod.requested.start}/${customPeriod.requested.end}`}
+                selection={selection}
+                period={customPeriod}
+                months={months}
+                anchor={presetAnchor(todayISO(), latest)}
+                onApply={(s) => {
+                  update({ selection: s })
+                  setGranularity(autoGranularity(resolvePeriod(s, latest).current))
+                }}
+                onReset={() => {
+                  reset()
+                  setCustom(false)
+                  setGranularity('month')
+                }}
+              />
+            )}
           </>
         }
       />

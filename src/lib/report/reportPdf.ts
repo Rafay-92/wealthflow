@@ -81,7 +81,18 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
     text('Fictional sample data', width - PAGE_MARGIN, 72, { align: 'right' })
   }
 
-  let y = 120
+  let y = 112
+
+  // ---- Exact dates and what they're compared with ---------------------------
+  doc.setFont('helvetica', 'normal').setFontSize(8.5)
+  setColor(MUTED)
+  text(
+    `Exact dates: ${report.dateRange} (${report.days} days, both included). Compared with: ${report.comparisonName.toLowerCase()}${report.previous || report.comparisonName !== 'No comparison' ? ` (${report.previousLabel})` : ''}. All amounts in Canadian dollars (CAD).`,
+    PAGE_MARGIN,
+    y,
+    { maxWidth: contentWidth },
+  )
+  y += 22
 
   // ---- Summary tiles --------------------------------------------------------
   const { summary, previous } = report
@@ -89,7 +100,7 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
   const tiles = [
     { label: 'Income', value: formatCents(summary.income), change: changeText(previous && moneyChange(summary.income, previous.income, true), 'percent', against) },
     { label: 'Spending', value: formatCents(summary.expenses), change: changeText(previous && moneyChange(summary.expenses, previous.expenses, false), 'percent', against) },
-    { label: 'Saved', value: formatCents(summary.net), change: changeText(previous && moneyChange(summary.net, previous.net, true), 'percent', against) },
+    { label: 'Net cash flow', value: formatCents(summary.net), change: changeText(previous && moneyChange(summary.net, previous.net, true), 'percent', against) },
     {
       label: 'Savings rate',
       value: formatPercent(summary.savingsRate, 2),
@@ -112,7 +123,11 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
     setColor(tile.change.color)
     text(tile.change.text, x + 10, y + 54)
   })
-  y += 66 + 28
+  y += 66 + 14
+  doc.setFont('helvetica', 'normal').setFontSize(8.5)
+  setColor(MUTED)
+  text(`Average daily spending ${formatCents(report.averageDailySpending)} · average daily income ${formatCents(report.averageDailyIncome)} · ${report.transactionCount} transactions`, PAGE_MARGIN, y)
+  y += 24
 
   const heading = (title: string, subtitle?: string) => {
     if (y > height - 140) {
@@ -238,11 +253,11 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
 
   // ---- Balance check (bank accounts with an opening balance) ------------------
   if (report.balanceChecks.length > 0) {
-    heading('Balance check', 'Opening + income − expenses ± transfers = expected closing. Only user-provided openings are verified.')
+    heading('Balance check', `Opening (start of ${formatDay(report.comparison.current.start)}) + income − expenses ± transfers = expected closing (end of ${formatDay(report.comparison.current.end)}). Only actual balances (yours or the bank's) can verify it.`)
     autoTable(doc, {
       ...tableDefaults,
       startY: y,
-      head: [['Account', 'Opening source', num('Opening'), num('Income'), num('Expenses'), num('Transfers'), num('Expected'), num('Actual'), num('Difference')]],
+      head: [['Account', 'Opening source', num('Opening'), num('Income'), num('Expenses'), num('Transfers'), num('Expected'), num('Actual / bank'), num('Difference')]],
       body: report.balanceChecks.map((r) => [
         r.accountName,
         OPENING_SOURCE_LABEL[r.openingSource!],
@@ -251,7 +266,7 @@ export function createReportPdf(report: MonthlyReport, options: PdfOptions): jsP
         formatCents(r.expenses),
         formatCents(r.transfersIn - r.transfersOut),
         formatCents(r.expectedClosing!),
-        r.actualClosing === null ? '-' : formatCents(r.actualClosing),
+        r.actualClosing === null ? '-' : `${formatCents(r.actualClosing)}${r.closingSource === 'reported' ? ' (bank)' : ''}`,
         r.difference === null ? '-' : !r.verified ? `${formatCents(r.difference, { signed: true })} (not verified)` : r.difference === 0 ? 'Balanced' : formatCents(r.difference, { signed: true }),
       ]),
       styles: { ...tableDefaults.styles, fontSize: 8 },

@@ -1,8 +1,10 @@
 import { AlertCircle, AlertTriangle, Check, FileDown, Info, Repeat } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link } from 'react-router'
 import { CategoryLabel } from '../components/CategoryLabel'
-import { PeriodPicker } from '../components/dashboard/PeriodPicker'
+import { DateRangePicker } from '../components/dashboard/DateRangePicker'
+import { fieldClass } from '../components/ui/fieldClass'
+import { usePeriod } from '../hooks/usePeriod'
 import { SpendingBreakdown } from '../components/dashboard/SpendingBreakdown'
 import { StatCard } from '../components/dashboard/StatCard'
 import { Button } from '../components/ui/Button'
@@ -12,10 +14,10 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { SampleDataNotice } from '../components/ui/SampleDataNotice'
 import { Section } from '../components/ui/Section'
 import { moneyChange, pointsChange } from '../lib/analytics/change'
-import { formatDay, formatMonth } from '../lib/dates'
+import { formatDay, formatMonth, todayISO } from '../lib/dates'
 import { formatCents, formatPercent } from '../lib/money'
 import { buildReport, type Observation } from '../lib/report/monthlyReport'
-import { resolvePeriod, selectionFromParams, selectionToParams } from '../lib/analytics/reportPeriod'
+import { COMPARISON_MODES, presetAnchor, resolvePeriod, type ComparisonMode } from '../lib/analytics/reportPeriod'
 import { OPENING_SOURCE_LABEL } from '../lib/balances/reconcile'
 import { availableMonths, latestDate } from '../lib/transactions'
 import { useDisplayData, useFinanceStore } from '../store/financeStore'
@@ -33,22 +35,25 @@ const TONE_ICON = {
 
 /** One shared empty list: a new [] each render would make the report rebuild every time. */
 const NO_BALANCES: BalancePoint[] = []
+const NO_CHECKPOINTS: never[] = []
 
 export function ReportsPage() {
   const { status, isSample, transactions, accounts } = useDisplayData()
   const savedBalances = useFinanceStore((s) => s.balancePoints)
   const balances = isSample ? NO_BALANCES : savedBalances
-  const [searchParams, setSearchParams] = useSearchParams()
+  const savedCheckpoints = useFinanceStore((s) => s.statementBalances)
+  const checkpoints = isSample ? NO_CHECKPOINTS : savedCheckpoints
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
   const months = useMemo(() => availableMonths(transactions), [transactions])
-  const selection = useMemo(() => selectionFromParams(searchParams, months), [searchParams, months])
+  const { selection, comparison, update, reset } = usePeriod(months)
+  const latest = useMemo(() => latestDate(transactions), [transactions])
   const report = useMemo(
-    () => (selection ? buildReport(transactions, selection, latestDate(transactions), accounts, balances) : null),
-    [transactions, selection, accounts, balances],
+    () => (selection ? buildReport(transactions, selection, latest, accounts, balances, { comparison, checkpoints }) : null),
+    [transactions, selection, latest, accounts, balances, comparison, checkpoints],
   )
-  const period = useMemo(() => (selection ? resolvePeriod(selection, latestDate(transactions)) : null), [selection, transactions])
+  const period = useMemo(() => (selection ? resolvePeriod(selection, latest, comparison) : null), [selection, latest, comparison])
 
   async function exportPdf() {
     if (!report) return
@@ -83,7 +88,8 @@ export function ReportsPage() {
   }
 
   const { summary, previous } = report
-  const vs = report.kind === 'custom' ? `vs previous ${period.days} days` : `vs ${report.previousLabel}`
+  const vs = !period.previous ? '' : comparison === 'previous-period' && report.kind === 'custom' ? `vs previous ${period.days} days` : `vs ${period.previousLabel}`
+  const nothing = period.previous ? 'Nothing to compare with' : 'No comparison selected'
 
   return (
     <>
@@ -92,7 +98,22 @@ export function ReportsPage() {
         description={`${report.kind === 'month' ? 'Calendar month' : 'Custom period'} · ${report.subtitle} · ${report.transactionCount} transactions`}
         actions={
           <>
-            <PeriodPicker key={selection.kind} selection={selection} period={period} months={months} onChange={(s) => setSearchParams(selectionToParams(s))} />
+            <DateRangePicker
+              key={`${period.requested.start}/${period.requested.end}`}
+              selection={selection}
+              period={period}
+              months={months}
+              anchor={presetAnchor(todayISO(), latest)}
+              onApply={(s) => update({ selection: s })}
+              onReset={reset}
+            />
+            <select aria-label="Compare with" className={fieldClass} value={comparison} onChange={(e) => update({ comparison: e.target.value as ComparisonMode })}>
+              {COMPARISON_MODES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
             <Button variant="primary" onClick={exportPdf} disabled={exporting}>
               <FileDown aria-hidden className="size-4" />
               {exporting ? 'Creating…' : 'Export PDF'}
@@ -111,18 +132,22 @@ export function ReportsPage() {
 
       <div className="flex flex-col gap-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Income" value={formatCents(summary.income)} change={previous && moneyChange(summary.income, previous.income, true)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint="Nothing to compare with" />
-          <StatCard label="Spending" value={formatCents(summary.expenses)} change={previous && moneyChange(summary.expenses, previous.expenses, false)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint="Nothing to compare with" />
-          <StatCard label="Saved" value={formatCents(summary.net)} change={previous && moneyChange(summary.net, previous.net, true)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint="Nothing to compare with" />
+          <StatCard label="Income" value={formatCents(summary.income)} change={previous && moneyChange(summary.income, previous.income, true)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint={nothing} />
+          <StatCard label="Spending" value={formatCents(summary.expenses)} change={previous && moneyChange(summary.expenses, previous.expenses, false)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint={nothing} />
+          <StatCard label="Net cash flow" negative={summary.net < 0} value={formatCents(summary.net)} change={previous && moneyChange(summary.net, previous.net, true)} formatChange={(n) => formatPercent(n)} comparisonLabel={vs} hint={nothing} />
           <StatCard
             label="Savings rate"
             value={formatPercent(summary.savingsRate, 2)}
             change={previous && pointsChange(summary.savingsRate, previous.savingsRate, true)}
             formatChange={(n) => `${n.toFixed(1)} pts`}
             comparisonLabel={vs}
-            hint={summary.savingsRate === null ? 'No income this month' : 'Nothing to compare with'}
+            hint={summary.savingsRate === null ? 'No income in this period' : nothing}
           />
         </div>
+        <p className="-mt-2 text-xs text-ink-faint" data-testid="report-dates">
+          Exact dates: {report.dateRange} ({report.days} {report.days === 1 ? 'day' : 'days'}, both included) · compared with: {report.comparisonName.toLowerCase()}
+          {period.previous ? ` (${period.previousLabel})` : ''} · average daily spending {formatCents(report.averageDailySpending)}, income {formatCents(report.averageDailyIncome)}
+        </p>
 
         <Section title="Key observations" subtitle="Calculated from your transactions, never guessed">
           <ul className="flex flex-col gap-3">

@@ -3,7 +3,8 @@ import type { BalancePoint } from '../../types/balance'
 import type { Transaction } from '../../types/transaction'
 import { isBankAccount, reconcileAccount, type AccountReconciliation } from '../balances/reconcile'
 import { monthsWithin } from '../analytics/dashboard'
-import { resolvePeriod, type PeriodSelection } from '../analytics/reportPeriod'
+import { COMPARISON_MODES, formatRange, resolvePeriod, type ComparisonMode, type PeriodSelection } from '../analytics/reportPeriod'
+import type { StatementBalance } from '../balances/checkpoints'
 import { compareCategories, largestExpenses, type CategoryChange, type MonthlyWithRate } from '../analytics/analytics'
 import { spendingByCategory, type CategoryTotal } from '../analytics/byCategory'
 import { isInPeriod, type MonthComparison, type Period } from '../analytics/periods'
@@ -31,6 +32,14 @@ export interface MonthlyReport {
   transactionCount: number
   /** Recurring payments are detected per calendar month, so only monthly reports list them. */
   recurringAvailable: boolean
+  /** The exact first and last dates covered, e.g. "Dec 23, 2026 – Jan 22, 2027". */
+  dateRange: string
+  /** Days covered, both ends counted. */
+  days: number
+  /** What the period is compared with, in words ("No comparison" when none). */
+  comparisonName: string
+  averageDailySpending: Cents
+  averageDailyIncome: Cents
   comparison: MonthComparison
   /** e.g. "Nov 1–20" or "November 2026". */
   periodLabel: string
@@ -70,6 +79,12 @@ export function buildMonthlyReport(
   return buildReport(transactions, { kind: 'month', month }, latestDate, accounts, points)
 }
 
+export interface ReportOptions {
+  comparison?: ComparisonMode
+  /** Running balances from your statements, for the balance check. */
+  checkpoints?: readonly StatementBalance[]
+}
+
 /**
  * Builds everything in a report, for a calendar month or a custom period.
  * Both the on-screen report and the PDF render this one object, so they can
@@ -81,12 +96,15 @@ export function buildReport(
   latestDate: ISODate | null,
   accounts: readonly Account[] = [],
   points: readonly BalancePoint[] = [],
+  options: ReportOptions = {},
 ): MonthlyReport {
-  const period = resolvePeriod(selection, latestDate)
-  const comparison: MonthComparison = { month: period.month ?? toMonthKey(period.current.end), current: period.current, previous: period.previous, isPartial: period.isPartial }
+  const { checkpoints = [] } = options
+  const period = resolvePeriod(selection, latestDate, options.comparison)
+  const comparison: MonthComparison = { month: period.month ?? toMonthKey(period.current.end), current: period.current, previous: period.previous ?? period.current, isPartial: period.isPartial }
   const summary = summarize(transactions, period.current)
-  const prev = summarize(transactions, period.previous)
-  const previous = prev.transactionCount > 0 ? prev : null
+  const prev = period.previous ? summarize(transactions, period.previous) : null
+  const previous = prev && prev.transactionCount > 0 ? prev : null
+  const comparisonName = COMPARISON_MODES.find((c) => c.value === period.comparison)!.label
   const isMonth = period.kind === 'month'
   const recurring = isMonth ? detectRecurring(transactions, period.month!) : []
   const earliest = transactions.reduce<string | null>((min, t) => (min === null || t.date < min ? t.date : min), null)
@@ -101,13 +119,24 @@ export function buildReport(
     month: comparison.month,
     transactionCount: transactions.filter((t) => isInPeriod(t.date, period.current)).length,
     recurringAvailable: isMonth,
+    dateRange: formatRange(period.current),
+    days: period.days,
+    comparisonName,
+    averageDailySpending: Math.round(summary.expenses / period.days),
+    averageDailyIncome: Math.round(summary.income / period.days),
     comparison,
     periodLabel: isMonth ? rangeLabel(period.current, !period.isPartial) : period.label,
-    previousLabel: isMonth ? rangeLabel(period.previous, !period.isPartial) : `the previous ${period.days} days (${period.previousLabel})`,
+    previousLabel: !period.previous
+      ? 'no comparison'
+      : isMonth && period.comparison !== 'previous-year'
+        ? rangeLabel(period.previous, !period.isPartial)
+        : period.comparison === 'previous-period'
+          ? `the previous ${period.days} days (${period.previousLabel})`
+          : period.previousLabel,
     summary,
     previous,
     categories: spendingByCategory(transactions, period.current),
-    categoryChanges: previous ? compareCategories(transactions, period.current, period.previous) : [],
+    categoryChanges: previous && period.previous ? compareCategories(transactions, period.current, period.previous) : [],
     biggestExpenses: largestExpenses(transactions, period.current, 5),
     recurring,
     recurringTotal: sumCents(recurring.map((r) => r.amount)),
@@ -117,7 +146,7 @@ export function buildReport(
   }
   const balanceChecks = accounts
     .filter(isBankAccount)
-    .map((a) => reconcileAccount(transactions, a, period, points))
+    .map((a) => reconcileAccount(transactions, a, period, points, checkpoints))
     .filter((r) => r.opening !== null)
   return { ...report, observations: buildObservations(report), balanceChecks }
 }

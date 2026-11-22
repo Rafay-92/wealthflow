@@ -115,3 +115,17 @@ export function formatMonth(key: MonthKey, style: 'long' | 'short' = 'long'): st
 export function formatDay(date: ISODate): string {
   return dayShort.format(toUTCDate(date))
 }
+
+/**
+ * The same day `count` months away, clamped to the month's length:
+ * shiftMonths('2026-03-31', -1) -> '2026-02-28'; shiftMonths('2028-03-31', -1) -> '2028-02-29' (leap year).
+ */
+export function shiftMonths(date: ISODate, count: number): ISODate {
+  const month = addMonths(toMonthKey(date), count)
+  return dateInMonth(month, Math.min(dayOfMonth(date), daysInMonth(month)))
+}
+
+/** Day of the week, 0 = Sunday … 6 = Saturday. */
+export function dayOfWeek(date: ISODate): number {
+  return new Date(`${date}T00:00:00Z`).getUTCDay()
+}

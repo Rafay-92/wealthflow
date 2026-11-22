@@ -66,5 +66,6 @@ export function toTransactions(
     category: categories[i] ?? 'Other',
     accountId,
     importId,
+    ...(d.balance !== null ? { runningBalance: d.balance } : {}),
   }))
 }

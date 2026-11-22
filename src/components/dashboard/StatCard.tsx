@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Minus, type LucideIcon } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { Change } from '../../lib/analytics/change'
 import { Card } from '../ui/Card'
@@ -15,6 +15,12 @@ interface StatCardProps {
   /** Shown instead of the change when there is none. */
   hint?: string
   style?: CSSProperties
+  /** A small icon beside the title. */
+  icon?: LucideIcon
+  /** One line of explanation, always shown under the comparison. */
+  note?: string
+  /** Shows the figure in red, e.g. negative cash flow. */
+  negative?: boolean
 }
 
 const TONE_CLASSES = {
@@ -29,13 +35,20 @@ const DIRECTION_ICONS = { up: ArrowUpRight, down: ArrowDownRight, flat: Minus } 
  * A single headline metric. The change badge carries meaning in three ways
  * (arrow, sign of the number, colour), so it never relies on colour alone.
  */
-export function StatCard({ label, value, change, formatChange, comparisonLabel, hint, style }: StatCardProps) {
+export function StatCard({ label, value, change, formatChange, comparisonLabel, hint, style, icon: TitleIcon, note, negative }: StatCardProps) {
   const Icon = change ? DIRECTION_ICONS[change.direction] : null
 
   return (
     <Card className="flex flex-col gap-3 p-5 motion-safe:animate-rise" style={style}>
-      <p className="text-sm text-ink-muted">{label}</p>
-      <p className="text-[26px] leading-none font-semibold tracking-tight">{value}</p>
+      <p className="flex items-center justify-between gap-2 text-sm text-ink-muted">
+        {label}
+        {TitleIcon && (
+          <span aria-hidden className="grid size-7 place-items-center rounded-lg bg-navy-700/70 text-ink-faint">
+            <TitleIcon className="size-4" />
+          </span>
+        )}
+      </p>
+      <p className={`text-[26px] leading-none font-semibold tracking-tight tabular ${negative ? 'text-negative' : ''}`}>{value}</p>
 
       <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         {change && Icon ? (
@@ -55,6 +68,7 @@ export function StatCard({ label, value, change, formatChange, comparisonLabel, 
           hint && <span className="text-ink-faint">{hint}</span>
         )}
       </div>
+      {note && <p className="-mt-1 text-[11px] text-ink-faint">{note}</p>}
     </Card>
   )
 }

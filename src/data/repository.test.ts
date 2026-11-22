@@ -26,7 +26,7 @@ const account = { id: 'chk', name: 'Checking', type: 'checking' as const }
 
 describe('repository', () => {
   it('starts empty', async () => {
-    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [], wealthItems: [], wealthEntries: [], balancePoints: [], deletedTransactions: [], budgets: [] })
+    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [], wealthItems: [], wealthEntries: [], balancePoints: [], statementBalances: [], deletedTransactions: [], budgets: [] })
   })
 
   it('saves an import and loads it back, sorted by date', async () => {
@@ -101,7 +101,7 @@ describe('repository', () => {
     const data = await loadAll(upgraded)
     expect(data.transactions.map((t) => t.id)).toEqual(['kept'])
     expect(data.rules).toEqual([])
-    expect(upgraded.verno).toBe(7)
+    expect(upgraded.verno).toBe(8)
   })
 
   it('replaces everything with a backup, or nothing at all if the backup is bad', async () => {
@@ -151,7 +151,7 @@ describe('repository', () => {
     await commitImport({ record: record('imp1', 1), account, mapping: null, transactions: [tx()] }, db)
     await saveRuleChange({ add: { id: 'r', keyword: 'X', category: 'Other', createdAt: '' }, transactions: [] }, db)
     await deleteAllData(db)
-    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [], wealthItems: [], wealthEntries: [], balancePoints: [], deletedTransactions: [], budgets: [] })
+    expect(await loadAll(db)).toEqual({ transactions: [], accounts: [], imports: [], mappings: [], rules: [], subscriptionDecisions: [], wealthItems: [], wealthEntries: [], balancePoints: [], statementBalances: [], deletedTransactions: [], budgets: [] })
   })
 })
 

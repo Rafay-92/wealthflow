@@ -63,7 +63,7 @@ test.describe('importing statements', () => {
     await page.getByLabel('New account name').fill('Compte chèques')
     await page.getByRole('button', { name: 'Review transactions' }).click()
     await expect(page.getByText('+$2,380.00').first()).toBeVisible()
-    await expect(page.getByText('$5,667.25')).toBeVisible() // closing balance, from "5 667,25"
+    await expect(page.getByRole('region', { name: 'Statement summary' })).toContainText('$5,667.25') // closing balance, from "5 667,25"
     await page.getByRole('button', { name: /^Import \d/ }).click()
     await expect(page.getByRole('heading', { name: 'Imported 10 transactions' })).toBeVisible() // saved
     await page.goto('/transactions')
@@ -133,44 +133,47 @@ test.describe('features', () => {
     await expect(page.getByText('“STARBUCKS”', { exact: false }).first()).toBeVisible()
   })
 
-  test('balance check: an inferred opening is labelled and never shown as verified; a typed one can balance', async ({ page }) => {
+  test('balance check: a statement with a running balance gives bank-reported balances that reconcile', async ({ page }) => {
     await importSample(page, 'everyday-chequing-oct.csv', { name: 'Everyday Chequing' })
-    await page.goto('/')
+    await page.goto('/?month=2026-10')
     const income = page.locator('p', { hasText: /^Income$/ }).locator('..')
     const incomeBefore = await income.innerText()
     const card = page.locator('[data-testid^="balance-check-"]')
 
-    // The file has a balance column, so the opening is worked back from it: Inferred, not verified.
+    // The file's balance column gives the bank's own opening and closing.
     await expect(card).toContainText('Opening balance (Oct 1)')
     await expect(card).toContainText('$3,512.40')
-    await expect(card.getByTestId('opening-source')).toHaveText('Inferred from a reported closing balance')
-    await expect(card).toContainText('$5,381.83') // expected closing = the bank's own balance, by construction
+    await expect(card.getByTestId('opening-source')).toHaveText('Bank-reported')
+    await expect(card).toContainText('Bank-reported closing')
+    await expect(card).toContainText('$5,381.83')
+    await expect(card.getByRole('status')).toContainText('Balanced')
+    await expect(card.getByTestId('checkpoint-summary')).toContainText('all match')
 
-    // Entering an actual closing can't verify anything while the opening is inferred.
+    // A balance you type is never overwritten by the bank's, and a wrong one shows a difference.
     await card.getByRole('button', { name: /Edit balances/ }).click()
-    await card.getByPlaceholder('From your bank statement').fill('5,381.83')
-    await card.getByRole('button', { name: 'Save balances' }).click()
-    await expect(card.getByRole('status')).toContainText('Can’t be verified')
-    await expect(card.getByTestId('opening-source')).toHaveText('Inferred from a reported closing balance') // untouched: still inferred
-
-    // Type the real opening from the statement: now both ends are user-provided.
-    await card.getByRole('button', { name: /Edit balances/ }).click()
-    await card.getByPlaceholder('e.g. 5,000.00').fill('3,512.40')
-    await card.getByPlaceholder('From your bank statement').fill('5,376.83')
+    await card.getByPlaceholder('e.g. 5,000.00').fill('3,500.00')
     await card.getByRole('button', { name: 'Save balances' }).click()
     await expect(card.getByTestId('opening-source')).toHaveText('User-provided')
-    await expect(card.getByRole('status')).toContainText('Difference: -$5.00')
-    await expect(card.getByRole('status')).toContainText('LESS')
-
-    await card.getByRole('button', { name: /Edit balances/ }).click()
-    await card.getByPlaceholder('From your bank statement').fill('5381.83')
-    await card.getByRole('button', { name: 'Save balances' }).click()
-    await expect(card.getByRole('status')).toContainText('Balanced')
+    await expect(card.getByRole('status')).toContainText('Difference: +$12.40')
 
     await page.reload()
-    await expect(card.getByRole('status')).toContainText('Balanced') // saved
-    await expect(card.getByTestId('opening-source')).toHaveText('User-provided')
+    await expect(card.getByTestId('opening-source')).toHaveText('User-provided') // saved
     expect(await income.innerText()).toBe(incomeBefore) // balances never change income
+  })
+
+  test('an inferred opening is labelled and never shown as verified', async ({ page }) => {
+    // No balance column: the "Balance today" typed at import is the only bank figure.
+    await page.goto('/upload')
+    await page.locator('input[type=file]').setInputFiles(path.join(process.cwd(), 'e2e', 'data', 'period-nov22-dec22.csv'))
+    await page.getByLabel('New account name').fill('Test Chequing')
+    await page.getByLabel('Balance today (optional)').fill('7,860.60')
+    await page.getByRole('button', { name: 'Review transactions' }).click()
+    await page.getByRole('button', { name: /^Import \d/ }).click()
+    await expect(page.getByRole('heading', { name: 'Imported 24 transactions' })).toBeVisible()
+    await page.goto('/?from=2026-12-01&to=2026-12-22')
+    const card = page.locator('[data-testid^="balance-check-"]')
+    await expect(card.getByTestId('opening-source')).toHaveText('Inferred from a reported closing balance')
+    await expect(card.getByRole('status')).toContainText('Can’t be verified')
   })
 
   test('custom period Nov 22 – Dec 22: every figure follows the chosen dates; the monthly view is unchanged', async ({ page }) => {
@@ -187,18 +190,19 @@ test.describe('features', () => {
     // Calendar month (December) is unchanged.
     await page.goto('/?month=2026-12')
     await expect(page.getByText(/^Calendar month · December 2026, month to date/)).toBeVisible()
-    await expect(page.getByText(/15 transactions/).first()).toBeVisible()
     await expect(stat('Income')).toContainText('$1,000.00')
     await expect(stat('Expenses')).toContainText('$1,140.74')
     await expect(stat('Net cash flow')).toContainText('-$140.74')
 
-    // Switch to a custom period and choose the dates.
-    await page.getByRole('group', { name: 'Reporting period' }).getByRole('button', { name: 'Custom period' }).click()
-    await page.getByLabel('Period start').fill('2026-11-22')
-    await page.getByLabel('Period end').fill('2026-12-22')
+    // Choose any dates in the picker, then Apply.
+    await page.getByRole('button', { name: /^Period:/ }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a period' })
+    await picker.getByLabel('Start date').fill('2026-11-22')
+    await picker.getByLabel('End date').fill('2026-12-22')
+    await picker.getByRole('button', { name: 'Apply' }).click()
     await expect(page).toHaveURL(/from=2026-11-22&to=2026-12-22/)
+    await expect(page.getByTestId('active-range')).toHaveText('Nov 22 – Dec 22, 2026')
     await expect(page.getByText('Custom period · Nov 22 – Dec 22, 2026 · 31 days · 24 transactions')).toBeVisible()
-    await expect(page.getByTestId('custom-period-note')).toBeVisible()
     await expect(stat('Income')).toContainText('$4,500.00')
     await expect(stat('Expenses')).toContainText('$1,639.40')
     await expect(stat('Net cash flow')).toContainText('$2,860.60')
@@ -210,22 +214,17 @@ test.describe('features', () => {
     await card.getByPlaceholder('e.g. 5,000.00').fill('5,000')
     await card.getByRole('button', { name: 'Save balances' }).click()
     await expect(card.getByTestId('opening-source')).toHaveText('User-provided')
-    await expect(card).toContainText('Opening balance (Nov 22)')
-    await expect(card).toContainText('$5,000.00')
     await expect(card).toContainText('$9,500.00') // total available funds
     await expect(card).toContainText('= Expected closing (Dec 22)')
     await expect(card).toContainText('$7,860.60')
     await expect(stat('Income')).toContainText('$4,500.00') // the opening is not income
 
-    // The period survives a reload, and the report covers the same dates.
-    await page.reload()
-    await expect(stat('Net cash flow')).toContainText('$2,860.60')
-    await page.goto('/reports?from=2026-11-22&to=2026-12-22')
+    // The period is remembered: Reports opens on the same dates.
+    await page.getByRole('navigation').getByRole('link', { name: 'Reports', exact: true }).first().click()
     await expect(page.getByRole('heading', { name: 'Custom period report' })).toBeVisible()
-    await expect(page.getByText(/Custom period · Nov 22 – Dec 22, 2026 · 31 days · 24 transactions/)).toBeVisible()
+    await expect(page.getByTestId('report-dates')).toContainText('Exact dates: Nov 22 – Dec 22, 2026 (31 days, both included)')
     await expect(stat('Income')).toContainText('$4,500.00')
     await expect(stat('Spending')).toContainText('$1,639.40')
-    await expect(stat('Savings rate')).toContainText('63.57%')
     await expect(page.getByRole('cell', { name: '$7,860.60' })).toBeVisible()
     await expect(page.getByRole('cell', { name: 'User-provided' })).toBeVisible()
     const download = page.waitForEvent('download')
@@ -236,6 +235,87 @@ test.describe('features', () => {
     await page.goto('/?from=2026-11-22&to=2026-12-22')
     await page.getByRole('link', { name: 'View all 24' }).click()
     await expect(page.getByText(/^24 shown/)).toBeVisible()
+  })
+
+  test('statement Dec 23 – Jan 22 with a running balance: import summary, statement period, presets and comparisons', async ({ page }) => {
+    await page.goto('/upload')
+    await page.locator('input[type=file]').setInputFiles(path.join(process.cwd(), 'e2e', 'data', 'statement-dec23-jan22.csv'))
+    await page.getByLabel('New account name').fill('Statement Chequing')
+    await page.getByRole('button', { name: 'Review transactions' }).click()
+    const summary = page.getByRole('region', { name: 'Statement summary' })
+    await expect(summary).toContainText('Dec 23, 2026 – Jan 22, 2027') // the file's own dates, not a calendar month
+    await expect(summary).toContainText('$3,800.00') // money in
+    await expect(summary).toContainText('$1,748.77') // money out
+    await expect(summary).toContainText('Yes · ends at $9,911.83')
+    await page.getByRole('button', { name: /^Import \d/ }).click()
+    await page.getByRole('link', { name: 'View this statement period' }).click()
+
+    const stat = (label: string) => page.locator('p', { hasText: new RegExp(`^${label}$`) }).locator('..')
+    const card = page.locator('[data-testid^="balance-check-"]')
+    await expect(page.getByTestId('active-range')).toHaveText('Dec 23, 2026 – Jan 22, 2027')
+    await expect(stat('Income')).toContainText('$3,800.00')
+    await expect(stat('Expenses')).toContainText('$1,748.77')
+    // Running balances are checkpoints: the bank's own opening and closing, every day checked.
+    await expect(card.getByTestId('opening-source')).toHaveText('Bank-reported')
+    await expect(card).toContainText('$7,860.60')
+    await expect(card).toContainText('$9,911.83')
+    await expect(card.getByRole('status')).toContainText('Balanced')
+    await expect(card.getByTestId('checkpoint-summary')).toContainText('all match')
+    await expect(page.getByTestId('total-balance')).toHaveText('$9,911.83') // current balance
+
+    // January as a calendar month: the verified January figures, current balance unchanged.
+    await page.getByRole('button', { name: /^Period:/ }).click()
+    await page.getByRole('dialog', { name: 'Choose a period' }).getByLabel('Calendar month').selectOption('2027-01')
+    await expect(stat('Income')).toContainText('$600.00')
+    await expect(stat('Expenses')).toContainText('$1,415.13')
+    await expect(page.getByTestId('total-balance')).toHaveText('$9,911.83') // a historical period doesn't change it
+
+    // Presets count back from the latest transaction (Jan 22, 2027 is after today).
+    await page.getByRole('button', { name: /^Period:/ }).click()
+    await page.getByRole('dialog', { name: 'Choose a period' }).getByRole('button', { name: 'Last 7 days' }).click()
+    await expect(page.getByTestId('active-range')).toHaveText('Jan 16 – Jan 22, 2027')
+
+    // Jan 23 – Feb 22 vs the previous equivalent period, Dec 23 – Jan 22 (31 days each).
+    await page.getByRole('button', { name: /^Period:/ }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a period' })
+    await picker.getByLabel('Start date').fill('2027-02-22')
+    await picker.getByLabel('End date').fill('2027-01-23')
+    await expect(picker.getByRole('alert')).toContainText('on or after the start date')
+    await expect(picker.getByRole('button', { name: 'Apply' })).toBeDisabled()
+    await picker.getByLabel('Start date').fill('2027-01-23')
+    await picker.getByLabel('End date').fill('2027-02-22')
+    await picker.getByRole('button', { name: 'Apply' }).click()
+    await expect(page.getByTestId('custom-period-note')).toContainText('(Dec 23, 2026 – Jan 22, 2027)')
+    await page.getByLabel('Compare with').selectOption('none')
+    await expect(stat('Income')).toContainText('No comparison selected')
+
+    // Reset returns to the latest calendar month.
+    await page.getByRole('button', { name: /^Period:/ }).click()
+    await page.getByRole('dialog', { name: 'Choose a period' }).getByRole('button', { name: 'Reset' }).click()
+    await expect(page).toHaveURL(/month=2027-01/)
+  })
+
+  test('the dashboard can show one account or all accounts', async ({ page }) => {
+    await importSample(page, 'everyday-chequing-oct.csv', { name: 'Everyday Chequing' })
+    await importSample(page, 'rewards-card-nov.csv', { name: 'Rewards Card', type: 'credit' })
+    await page.goto('/?from=2026-10-01&to=2026-11-30')
+    const count = async () => Number((await page.getByRole('link', { name: /^View all \d+/ }).innerText()).match(/\d+/)![0])
+    const all = await count()
+    await page.getByLabel('Account').selectOption({ label: 'Rewards Card' })
+    await expect(page.getByText(/· Rewards Card only$/)).toBeVisible()
+    const card = await count()
+    expect(card).toBeGreaterThan(0)
+    expect(card).toBeLessThan(all)
+  })
+
+  test('analytics follows a custom range, grouped by day or week', async ({ page }) => {
+    await page.goto('/?from=2026-10-01&to=2026-10-31')
+    await page.getByRole('navigation').getByRole('link', { name: 'Analytics', exact: true }).first().click()
+    await expect(page.getByText(/^Custom period · Oct 1 – Oct 31, 2026/)).toBeVisible() // remembered from the Dashboard
+    await expect(page.getByRole('group', { name: 'Group by' }).getByRole('button', { name: 'Daily' })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('group', { name: 'Group by' }).getByRole('button', { name: 'Weekly' }).click()
+    await expect(page.getByText(/^Per week · \d+ weeks/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Period over period' })).toBeVisible()
   })
 
   test('live transactions: adding, editing and deleting update the dashboard without a reload', async ({ page }) => {

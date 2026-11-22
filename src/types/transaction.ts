@@ -58,6 +58,12 @@ export interface Transaction {
    * statement still recognises the row as already imported, even after your edit.
    */
   importKey?: string
+  /**
+   * The balance your bank showed after this row, from the statement's
+   * running-balance column. Kept for reference only: it is never income,
+   * spending or part of any total.
+   */
+  runningBalance?: Cents
 }
 
 /**

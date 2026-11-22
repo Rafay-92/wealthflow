@@ -4,6 +4,8 @@ import type { PreparedImport } from '../../lib/csv/prepareImport'
 import { formatDay } from '../../lib/dates'
 import { formatCents, sumCents } from '../../lib/money'
 import type { DraftStatus } from '../../types/import'
+import { hasRunningBalance } from '../../lib/balances/checkpoints'
+import { formatRange } from '../../lib/analytics/reportPeriod'
 import type { Category } from '../../types/transaction'
 import { CategoryLabel } from '../CategoryLabel'
 import { Button } from '../ui/Button'
@@ -65,6 +67,8 @@ export function ImportReview(props: ImportReviewProps) {
           Into <span className="text-ink">{props.accountName}</span>. Untick anything you don't want.
         </p>
       </div>
+
+      <StatementSummary prepared={prepared} accountName={props.accountName} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="New" value={count('new')} />
@@ -179,5 +183,42 @@ function Stat({ label, value, hint, tone }: { label: string; value: number; hint
         {hint && value > 0 && <span className="ml-1.5 text-xs font-normal text-ink-faint">{hint}</span>}
       </p>
     </div>
+  )
+}
+
+/**
+ * What the file covers, before anything is saved: its exact date range (not
+ * assumed to be a calendar month), totals, account and whether it has a
+ * running balance. Totals cover every readable row in the file.
+ */
+function StatementSummary({ prepared, accountName }: { prepared: PreparedImport; accountName: string }) {
+  const drafts = prepared.rows.map((r) => r.draft)
+  if (drafts.length === 0) return null
+  const dates = drafts.map((d) => d.date).sort()
+  const amounts = drafts.map((d) => d.amount)
+  const moneyIn = sumCents(amounts.filter((a) => a > 0))
+  const moneyOut = -sumCents(amounts.filter((a) => a < 0))
+  const running = hasRunningBalance(drafts)
+  const items: [string, string][] = [
+    ['Statement period', formatRange({ start: dates[0]!, end: dates.at(-1)! })],
+    ['Transactions in file', drafts.length.toLocaleString()],
+    ['Money in', formatCents(moneyIn)],
+    ['Money out', formatCents(moneyOut)],
+    ['Account', accountName],
+    ['Running balance column', running ? `Yes${prepared.closing ? ` · ends at ${formatCents(prepared.closing.balance)}` : ''}` : 'No · enter an opening balance on the Dashboard'],
+  ]
+  return (
+    <section aria-label="Statement summary" className="rounded-xl border border-navy-600/60 bg-navy-900/60 p-4">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-xs text-ink-faint">{label}</dt>
+            <dd className="truncate font-medium tabular" title={value}>
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   )
 }

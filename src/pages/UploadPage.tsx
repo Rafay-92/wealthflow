@@ -15,6 +15,8 @@ import { suggestMapping } from '../lib/csv/detectColumns'
 import { checkFile, columnHeaders, detectHeaderRow, ImportError, layoutSignature, parseCsvText } from '../lib/csv/parseCsv'
 import { parseAmountToCents } from '../lib/money'
 import { isSelectedByDefault, prepareImport, toTransactions, type PreparedImport } from '../lib/csv/prepareImport'
+import { statementCheckpoints } from '../lib/balances/checkpoints'
+import { formatRange } from '../lib/analytics/reportPeriod'
 import { useFinanceStore } from '../store/financeStore'
 import type { Account } from '../types/account'
 import type { ColumnMapping, ImportRecord } from '../types/import'
@@ -31,7 +33,7 @@ type Step =
   | { kind: 'select' }
   | { kind: 'map' }
   | { kind: 'review'; prepared: PreparedImport; categories: Category[]; selected: Set<number> }
-  | { kind: 'done'; count: number; accountName: string }
+  | { kind: 'done'; count: number; accountName: string; accountId: string; start: string | null; end: string | null }
 
 interface LoadedFile {
   name: string
@@ -166,6 +168,13 @@ export function UploadPage() {
       await commitImport({
         account: updatedAccount,
         transactions: newTransactions,
+        // The running-balance column becomes daily checkpoints (never transactions),
+        // read from EVERY row in the file, duplicates included: the bank's balance includes them.
+        checkpoints: statementCheckpoints(
+          step.prepared.rows.map((r) => r.draft),
+          updatedAccount.id,
+          importId,
+        ),
         record: {
           id: importId,
           fileName: file.name,
@@ -183,7 +192,8 @@ export function UploadPage() {
             }
           : null,
       })
-      setStep({ kind: 'done', count: newTransactions.length, accountName: updatedAccount.name })
+      const dates = step.prepared.rows.map((r) => r.draft.date).sort()
+      setStep({ kind: 'done', count: newTransactions.length, accountName: updatedAccount.name, accountId: updatedAccount.id, start: dates[0] ?? null, end: dates.at(-1) ?? null })
       setFile(null)
     } catch (e) {
       console.error('[WealthFlow] Import failed', e)
@@ -334,10 +344,18 @@ export function UploadPage() {
             <h2 className="text-lg font-semibold">
               Imported {step.count.toLocaleString()} {step.count === 1 ? 'transaction' : 'transactions'}
             </h2>
-            <p className="mt-1 text-sm text-ink-muted">Added to {step.accountName}. Your dashboard now shows your data.</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              Added to {step.accountName}.
+              {step.start && step.end && <> The statement covers {formatRange({ start: step.start, end: step.end })}.</>}
+            </p>
           </div>
           <div className="flex flex-wrap justify-center gap-2">
-            <Link to="/" className={buttonClasses('primary')}>
+            {step.start && step.end ? (
+              <Link to={`/?from=${step.start}&to=${step.end}&account=${step.accountId}`} className={buttonClasses('primary')}>
+                View this statement period
+              </Link>
+            ) : null}
+            <Link to="/" className={buttonClasses(step.start ? 'secondary' : 'primary')}>
               View dashboard
             </Link>
             <Button onClick={startOver}>Import another file</Button>

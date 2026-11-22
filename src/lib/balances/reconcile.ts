@@ -4,6 +4,7 @@ import type { Transaction } from '../../types/transaction'
 import { isInPeriod, type Period } from '../analytics/periods'
 import { isTransfer } from '../analytics/summary'
 import { addDays, daysBetween, formatDay, type ISODate } from '../dates'
+import type { StatementBalance } from './checkpoints'
 import { formatCents, sumCents, type Cents } from '../money'
 
 /** Only bank accounts are reconciled (not credit cards). */
@@ -12,16 +13,18 @@ export function isBankAccount(account: Account): boolean {
 }
 
 /**
- * Where an opening balance came from. Only 'user' is a verified figure:
+ * Where an opening balance came from:
  *   user      - you typed it for this exact date
- *   inferred  - worked out from a closing balance your bank reported, by
- *               adding or removing the transactions in between
+ *   reported  - your bank reported it for this exact date (a statement's
+ *               running-balance column)
+ *   inferred  - worked out from a balance your bank reported on ANOTHER date,
+ *               by adding or removing the transactions in between
  *   estimated - carried from a balance you typed for ANOTHER date, through
  *               the transactions in between
- * The last two are only as right as your imported transactions are complete,
- * so they're never presented as actual balances.
+ * Only the first two are actual balances. The last two are only as right as
+ * your imported transactions are complete, so they're never presented as actual.
  */
-export type OpeningSource = 'user' | 'inferred' | 'estimated'
+export type OpeningSource = 'user' | 'reported' | 'inferred' | 'estimated'
 
 export interface ResolvedBalance {
   amount: Cents
@@ -32,6 +35,7 @@ export interface ResolvedBalance {
 
 export const OPENING_SOURCE_LABEL: Record<OpeningSource, string> = {
   user: 'User-provided',
+  reported: 'Bank-reported',
   inferred: 'Inferred from a reported closing balance',
   estimated: 'Estimated',
 }
@@ -40,6 +44,7 @@ export const OPENING_SOURCE_LABEL: Record<OpeningSource, string> = {
 export function describeOpening(opening: ResolvedBalance | null): string {
   if (!opening) return 'Unknown: enter your actual opening balance'
   if (opening.source === 'user') return 'User-provided: you entered it'
+  if (opening.source === 'reported') return 'Bank-reported: from your statement’s running balance'
   if (opening.source === 'inferred') return `Inferred from the closing balance your bank reported on ${formatDay(opening.basedOn!)}, not verified`
   return `Estimated from the balance you entered for ${formatDay(opening.basedOn!)}, not verified`
 }
@@ -51,15 +56,24 @@ export function describeOpening(opening: ResolvedBalance | null): string {
  * transactions in between; nothing is guessed. When several are possible,
  * the one bridging the fewest days wins (fewer transactions to rely on).
  */
-export function balanceAt(transactions: readonly Transaction[], account: Account, date: ISODate, points: readonly BalancePoint[]): ResolvedBalance | null {
+export function balanceAt(
+  transactions: readonly Transaction[],
+  account: Account,
+  date: ISODate,
+  points: readonly BalancePoint[],
+  checkpoints: readonly StatementBalance[] = [],
+): ResolvedBalance | null {
   const exact = points.find((p) => p.id === balancePointId(account.id, date))
   if (exact) return { amount: exact.amount, source: 'user', basedOn: null }
+  const reported = reportedAt(account, date, checkpoints)
+  if (reported !== null) return { amount: reported, source: 'reported', basedOn: null }
 
   // Known balances, each "at the start of" a day.
   const anchors: { start: ISODate; amount: Cents; source: OpeningSource; basedOn: ISODate }[] = []
   if (account.balance !== undefined && account.balanceAsOf) {
     anchors.push({ start: closingPointDate(account.balanceAsOf), amount: account.balance, source: 'inferred', basedOn: account.balanceAsOf })
   }
+  for (const c of checkpoints) if (c.accountId === account.id) anchors.push({ start: c.date, amount: c.amount, source: 'inferred', basedOn: addDays(c.date, -1) })
   for (const p of points) if (p.accountId === account.id) anchors.push({ start: p.date, amount: p.amount, source: 'estimated', basedOn: p.date })
   const best = anchors.sort((a, b) => daysBetween(a.start, date) - daysBetween(b.start, date) || (a.source === 'inferred' ? -1 : 1))[0]
   if (!best) return null
@@ -71,6 +85,26 @@ export function balanceAt(transactions: readonly Transaction[], account: Account
       ? best.amount - sumCents(mine.filter((t) => t.date >= date && t.date < best.start).map((t) => t.amount))
       : best.amount + sumCents(mine.filter((t) => t.date >= best.start && t.date < date).map((t) => t.amount))
   return { amount, source: best.source, basedOn: best.source === 'inferred' ? best.basedOn : best.start }
+}
+
+/**
+ * A balance your bank reported for the start of `date`: a statement
+ * checkpoint, or the account's reported balance when it's for the day before.
+ * The most recent import wins if two statements cover the same day.
+ */
+export function reportedAt(account: Account, date: ISODate, checkpoints: readonly StatementBalance[]): Cents | null {
+  const found = checkpoints.filter((c) => c.accountId === account.id && c.date === date).at(-1)
+  if (found) return found.amount
+  if (account.balance !== undefined && account.balanceAsOf && addDays(account.balanceAsOf, 1) === date) return account.balance
+  return null
+}
+
+/** A day where the bank's balance and the calculated one disagree. */
+export interface BalanceMismatch {
+  /** The day whose closing balance differs. */
+  date: ISODate
+  reported: Cents
+  calculated: Cents
 }
 
 export interface AccountReconciliation {
@@ -97,14 +131,19 @@ export interface AccountReconciliation {
   totalAvailable: Cents | null
   /** opening + income − expenses + transfersIn − transfersOut. */
   expectedClosing: Cents | null
-  /** Only ever a balance you typed. */
+  /** A balance you typed, or else the one your bank reported for the end of the period. */
   actualClosing: Cents | null
+  closingSource: 'user' | 'reported' | null
+  /** How many bank-reported daily balances inside the period were checked against the calculation. */
+  checkpointsChecked: number
+  /** The ones that didn't match. */
+  mismatches: BalanceMismatch[]
   /** actualClosing − expectedClosing. Positive = the bank shows MORE than expected. */
   difference: Cents | null
   /**
-   * True only when BOTH ends are figures you provided. With an inferred or
-   * estimated opening, a zero difference proves nothing (it can be zero by
-   * construction), so it's never shown as "Balanced".
+   * True only when both ends are actual balances (typed by you or reported by
+   * your bank). With an inferred or estimated opening, a zero difference proves
+   * nothing (it can be zero by construction), so it's never shown as "Balanced".
    */
   verified: boolean
 }
@@ -124,6 +163,7 @@ export function reconcileAccount(
   account: Account,
   period: { current: Period; isPartial: boolean },
   points: readonly BalancePoint[],
+  checkpoints: readonly StatementBalance[] = [],
 ): AccountReconciliation {
   const { current, isPartial } = period
   const inPeriod = transactions.filter((t) => t.accountId === account.id && isInPeriod(t.date, current))
@@ -133,10 +173,27 @@ export function reconcileAccount(
   const transfersIn = sumCents(transfers.filter((a) => a > 0))
   const transfersOut = -sumCents(transfers.filter((a) => a < 0)) || 0
 
-  const openingDetail = balanceAt(transactions, account, current.start, points)
+  const openingDetail = balanceAt(transactions, account, current.start, points, checkpoints)
   const opening = openingDetail?.amount ?? null
-  const actualClosing = points.find((p) => p.id === balancePointId(account.id, closingPointDate(current.end)))?.amount ?? null
+  const closingDate = closingPointDate(current.end)
+  const typedClosing = points.find((p) => p.id === balancePointId(account.id, closingDate))?.amount ?? null
+  const reportedClosing = reportedAt(account, closingDate, checkpoints)
+  const actualClosing = typedClosing ?? reportedClosing
   const expectedClosing = opening === null ? null : opening + income - expenses + transfersIn - transfersOut
+
+  // Every bank-reported balance inside the period, compared with opening + transactions so far.
+  const mismatches: BalanceMismatch[] = []
+  let checkpointsChecked = 0
+  if (opening !== null) {
+    const dates = [...new Set(checkpoints.filter((c) => c.accountId === account.id && c.date > current.start && c.date <= closingDate).map((c) => c.date))].sort()
+    for (const date of dates) {
+      const reported = reportedAt(account, date, checkpoints)!
+      const calculated = opening + sumCents(inPeriod.filter((t) => t.date < date).map((t) => t.amount))
+      checkpointsChecked++
+      if (reported !== calculated) mismatches.push({ date: addDays(date, -1), reported, calculated })
+    }
+  }
+  const actualEnds = (s: OpeningSource | undefined) => s === 'user' || s === 'reported'
 
   return {
     accountId: account.id,
@@ -155,8 +212,11 @@ export function reconcileAccount(
     totalAvailable: opening === null ? null : opening + income,
     expectedClosing,
     actualClosing,
+    closingSource: typedClosing !== null ? 'user' : reportedClosing !== null ? 'reported' : null,
+    checkpointsChecked,
+    mismatches,
     difference: actualClosing !== null && expectedClosing !== null ? actualClosing - expectedClosing : null,
-    verified: openingDetail?.source === 'user' && actualClosing !== null,
+    verified: actualEnds(openingDetail?.source) && actualClosing !== null,
   }
 }
 
@@ -164,7 +224,7 @@ export interface CombinedReconciliation {
   accountCount: number
   /** Accounts still missing an opening balance (they're left out of the totals). */
   missingOpening: string[]
-  /** True only if every included opening balance is user-provided. */
+  /** True only if every included opening balance is an actual one (typed or bank-reported). */
   allOpeningsProvided: boolean
   opening: Cents
   income: Cents
@@ -189,7 +249,7 @@ export function combineReconciliations(items: readonly AccountReconciliation[]):
   return {
     accountCount: ready.length,
     missingOpening: items.filter((r) => r.opening === null).map((r) => r.accountName),
-    allOpeningsProvided: ready.length > 0 && ready.every((r) => r.openingSource === 'user'),
+    allOpeningsProvided: ready.length > 0 && ready.every((r) => r.openingSource === 'user' || r.openingSource === 'reported'),
     opening: sum((r) => r.opening!),
     income: sum((r) => r.income),
     expenses: sum((r) => r.expenses),
@@ -206,7 +266,7 @@ export function combineReconciliations(items: readonly AccountReconciliation[]):
 export function explainDifference(difference: Cents, throughDate: ISODate, isPartial: boolean, verified = true): string {
   const asOf = isPartial ? ` Your data only runs to ${formatDay(throughDate)}, so compare with your balance on that date.` : ''
   if (!verified) {
-    return `Can’t be verified: the opening balance isn’t one you provided, so a match here proves nothing. Enter your actual opening balance from your statement to check these transactions.${asOf}`
+    return `Can’t be verified: the opening balance is inferred or estimated, not an actual balance, so a match here proves nothing. Enter your actual opening balance from your statement to check these transactions.${asOf}`
   }
   if (difference === 0) return `Balanced: your transactions add up exactly to your bank’s balance.${asOf}`
   const amount = formatCents(Math.abs(difference))

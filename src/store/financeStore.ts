@@ -12,6 +12,7 @@ import { importFingerprint } from '../lib/csv/duplicates'
 import type { WealthEntry, WealthItem, WealthType } from '../types/wealth'
 import type { ISODate } from '../lib/dates'
 import type { BalancePoint } from '../types/balance'
+import type { StatementBalance } from '../lib/balances/checkpoints'
 import type { Cents } from '../lib/money'
 
 /**
@@ -37,6 +38,7 @@ interface FinanceState {
   wealthItems: WealthItem[]
   wealthEntries: WealthEntry[]
   balancePoints: BalancePoint[]
+  statementBalances: StatementBalance[]
   deletedTransactions: DeletedTransaction[]
   budgets: Budget[]
 
@@ -97,6 +99,7 @@ export const useFinanceStore = create<FinanceState>()((set, get) => ({
   wealthItems: [],
   wealthEntries: [],
   balancePoints: [],
+  statementBalances: [],
   deletedTransactions: [],
   budgets: [],
 

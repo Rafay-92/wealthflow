@@ -1,10 +1,12 @@
 import { GRANULARITIES, type Granularity } from '../../lib/analytics/granularity'
 
+type Option = { value: Granularity; label: string }
+
 /** A segmented control: group analytics by month, quarter or year. */
-export function GranularitySelect({ value, onChange }: { value: Granularity; onChange: (v: Granularity) => void }) {
+export function GranularitySelect({ value, onChange, options = GRANULARITIES }: { value: Granularity; onChange: (v: Granularity) => void; options?: readonly Option[] }) {
   return (
     <div role="group" aria-label="Group by" className="inline-flex rounded-lg border border-navy-600 bg-navy-800 p-0.5">
-      {GRANULARITIES.map((o) => (
+      {options.map((o) => (
         <button
           key={o.value}
           type="button"
