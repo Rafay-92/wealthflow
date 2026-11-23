@@ -24,7 +24,7 @@ export function ImportHistory({ imports, accounts, onUndo }: ImportHistoryProps)
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{record.fileName}</p>
             <p className="text-xs text-ink-faint">
-              {record.transactionCount.toLocaleString()} transactions · {accountName(record.accountId)} ·{' '}
+              {record.transactionCount.toLocaleString()} {record.transactionCount === 1 ? 'transaction' : 'transactions'} · {accountName(record.accountId)} ·{' '}
               {dateTime.format(new Date(record.importedAt))}
             </p>
           </div>

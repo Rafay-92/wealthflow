@@ -39,7 +39,7 @@ export function BalanceHistoryChart({ history }: { history: readonly BalanceHist
         {history.map((h, i) => (
           <li key={h.accountId} className="flex items-center gap-1.5">
             <span aria-hidden className="h-0.5 w-3 rounded" style={{ background: COLORS[i % COLORS.length] }} />
-            {h.name} <span className="text-ink-faint">· starts from a {OPENING_SOURCE_LABEL[h.source].toLowerCase()} balance</span>
+            {h.name} <span className="text-ink-faint">· starting balance: {OPENING_SOURCE_LABEL[h.source].toLowerCase()}</span>
           </li>
         ))}
       </ul>

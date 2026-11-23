@@ -6,6 +6,45 @@ A personal finance analytics app for Canada. Import CSV bank statements and see 
 
 > ⚠️ This is a learning project and a prototype. Use the fictional sample data, not real financial information, until the security checklist at the bottom has been completed.
 
+![Dashboard with fictional sample data](docs/screenshots/dashboard.png)
+
+<details>
+<summary>More screenshots</summary>
+
+| | |
+| --- | --- |
+| ![Transactions](docs/screenshots/transactions.png) | ![Analytics](docs/screenshots/analytics.png) |
+| ![Monthly report](docs/screenshots/reports.png) | ![CSV import](docs/screenshots/import.png) |
+
+<img src="docs/screenshots/dashboard-phone.png" alt="Dashboard on a phone" width="300" />
+
+All screenshots show the built-in fictional sample data.
+</details>
+
+## Getting started
+
+**Requirements:** [Node.js](https://nodejs.org) 20.19+ or 22.12+ (required by Vite 8), and npm.
+
+```bash
+git clone https://github.com/Rafay-92/Wealthflow-.git
+cd Wealthflow-
+npm install
+npm run dev          # open http://localhost:5173
+```
+
+To build and serve the production version (with the Content Security Policy applied):
+
+```bash
+npm run build        # type-checks, then builds into dist/
+npm run preview      # serves dist/ at http://localhost:4173
+```
+
+On Windows you can also double-click `Open WealthFlow.bat`, which builds the app and opens it at http://localhost:5173.
+
+## Tech stack
+
+React 19 · TypeScript (strict) · Vite 8 · Tailwind CSS 4 · Recharts · Zustand · Dexie (IndexedDB) · React Router · PapaParse · jsPDF · Vitest · Playwright · oxlint
+
 ## Features
 
 | Page | What it does |
@@ -55,7 +94,7 @@ src/
 ├── data/           IndexedDB schema (Dexie) and the repository: the only code that touches storage
 ├── store/          Zustand store: mirrors the database for the UI
 ├── components/     Reusable UI pieces, grouped by feature
-├── hooks/          React hooks (insights)
+├── hooks/          React hooks (insights, the shared period selection)
 └── pages/          One component per route (lazy-loaded)
 ```
 
@@ -80,7 +119,16 @@ Data flows one way: **lib → store → pages → components**. Pages only displ
 ## Testing
 
 - **Unit tests** (Vitest): `npm test`. These cover money parsing, dates, CSV parsing (including the real sample files), duplicates, categorization, analytics, recurring detection, reports and PDF content, insights, net worth, backups and database migrations.
-- **Browser tests** (Playwright, in [`e2e/`](e2e/)): `npm run test:e2e`. These build the app, start a fresh production server, and use your installed Microsoft Edge, so no browser download is needed. They cover every page, English and French imports with duplicates, transfers and totals, rules, PDF export, wealth, backup and restore, phone widths and keyboard access. **Any console error, crash or Content Security Policy violation fails the test automatically.**
+- **Browser tests** (Playwright, in [`e2e/`](e2e/)): `npm run test:e2e`. These build the app, start a fresh production server, and use your installed Microsoft Edge, so no browser download is needed. They cover every page, English and French imports with duplicates, transfers and totals, rules, PDF export, wealth, backup and restore, phone widths and keyboard access. **Any console error, crash or Content Security Policy violation fails the test automatically.** On macOS or Linux without Edge, change `channel: 'msedge'` in [`playwright.config.ts`](playwright.config.ts) to `'chrome'`, or remove it and run `npx playwright install chromium`.
+- **Before a pull request:** `npm run lint && npm test && npm run build && npm run test:e2e`.
+
+## Your data and privacy
+
+- **Where it's stored:** in your browser's IndexedDB (database name `wealthflow`), on this device and in this browser profile only. There is no server, account or cloud database.
+- **What leaves your device:** nothing, unless you choose to download a backup (JSON) or a PDF report. The app makes no network requests of its own, and the production build's Content Security Policy (`connect-src 'self'`) stops the page from contacting other servers.
+- **Not encrypted:** the data in IndexedDB and in backup files is plain text. Anyone with access to this browser profile, or to a backup file, can read it.
+- **Deleting it:** Settings → Delete all data erases every table. Clearing the site's data in your browser does the same.
+- **Never commit your own data.** `.gitignore` excludes CSV/OFX/QFX/QIF files (except the fictional samples), `.env` files and WealthFlow's backup and report files, but check `git status` before committing.
 
 ## Known limitations
 
@@ -90,6 +138,16 @@ Data flows one way: **lib → store → pages → components**. Pages only displ
 - **Wealth values are entered by hand.** There are no investment price feeds.
 - **One browser, one device.** Clearing site data deletes everything (keep a backup), and there's no sync.
 - **Heuristics can be wrong.** Categories, transfers and recurring payments are detected by rules. Everything can be corrected by hand, and the "needs review" filter shows what nothing matched.
+
+## License
+
+WealthFlow is released under the [MIT License](LICENSE). © 2026 Rafay-92.
+
+In plain terms:
+
+- **You may** use, copy, modify, merge, publish, distribute, sublicense and sell copies of this code, in personal or commercial projects, open or closed source.
+- **You must** keep the copyright notice and the license text in all copies or substantial portions of the code.
+- **There is no warranty.** The software is provided "as is", and the authors are not liable for any damages arising from its use. That includes financial decisions made using its calculations: always check figures against your bank's own statements.
 
 ## Before using real financial data
 

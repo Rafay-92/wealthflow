@@ -111,7 +111,7 @@ function AccountCard({ item, period, onSave }: { item: AccountReconciliation; pe
         <div className="min-w-0">
           <h3 className="truncate font-medium">{item.accountName}</h3>
           <p className="text-xs text-ink-faint">
-            {item.transactionCount} transactions · {start}–{asOf}
+            {item.transactionCount} {item.transactionCount === 1 ? 'transaction' : 'transactions'} · {start}–{asOf}
             {item.isPartial && (period.kind === 'month' ? ' (month to date)' : ' (your data stops here)')}
           </p>
         </div>

@@ -30,6 +30,9 @@ financial-statements/
 *.ofx
 *.qfx
 *.qif
+# WealthFlow's own backups and reports contain your financial data
+wealthflow-backup-*.json
+wealthflow-report-*.pdf
 
 # Logs
 logs/
@@ -66,3 +69,7 @@ desktop.ini
 
 !e2e/data/
 !e2e/data/**
+
+# "data/" above is meant for exported financial data, not source code:
+# without this, new files in src/data/ would silently never be committed.
+!src/data/
